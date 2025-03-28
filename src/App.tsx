@@ -6,8 +6,12 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+// Note: Consider changing these layout imports to use aliases too for consistency
+// e.g., import Navbar from "@/components/layout/Navbar";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
+// Import pages using aliases for consistency if desired
+// e.g., import Home from "@/pages/Home";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import StoryCreator from "./pages/StoryCreator";
@@ -15,11 +19,11 @@ import StoryLibrary from "./pages/StoryLibrary";
 import StoryReading from "./pages/StoryReading";
 import VoiceProfiles from "./pages/VoiceProfiles";
 import NotFound from "./pages/NotFound";
+import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/SignupPage";
 
-// --- Add New Imports ---
-import LoginPage from "./pages/LoginPage"; // Import Login Page
-import SignupPage from "./pages/SignupPage"; // Import Signup Page
-import ProtectedRoute from "./components/ProtectedRoute"; // Import ProtectedRoute
+// --- CORRECTED Import Path ---
+import ProtectedRoute from "@/components/ProtectedRoute"; // Use alias path
 
 // --- Existing QueryClient setup ---
 const queryClient = new QueryClient();
@@ -41,8 +45,7 @@ const App = () => (
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
-              {/* Story reading page - decide if public or protected */}
-              {/* Let's assume public for now */}
+              {/* Story reading page - assume public for now */}
               <Route path="/story/:id/play" element={<StoryReading />} />
 
               {/* Protected Routes */}

@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,17 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				storytime: {
+					purple: '#8A4FFF',
+					pink: '#FF6B9E',
+					blue: '#4FB8FF',
+					yellow: '#FFD166',
+					green: '#06D6A0',
+					orange: '#FF9F51',
+					red: '#EF476F',
+					lightBlue: '#E4F6FF',
+					background: '#F9FAFC'
 				}
 			},
 			borderRadius: {
@@ -84,11 +96,35 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'float': {
+					'0%, 100%': { transform: 'translateY(0)' },
+					'50%': { transform: 'translateY(-10px)' }
+				},
+				'bounce-slow': {
+					'0%, 100%': { transform: 'translateY(0)' },
+					'50%': { transform: 'translateY(-15px)' }
+				},
+				'slide-up': {
+					'0%': { transform: 'translateY(20px)', opacity: '0' },
+					'100%': { transform: 'translateY(0)', opacity: '1' }
+				},
+				'fade-in': {
+					'0%': { opacity: '0' },
+					'100%': { opacity: '1' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'float': 'float 6s ease-in-out infinite',
+				'bounce-slow': 'bounce-slow 6s ease-in-out infinite',
+				'slide-up': 'slide-up 0.6s ease-out',
+				'fade-in': 'fade-in 0.5s ease-out'
+			},
+			fontFamily: {
+				display: ['var(--font-display)', 'serif'],
+				body: ['var(--font-body)', 'sans-serif']
 			}
 		}
 	},

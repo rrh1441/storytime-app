@@ -13,13 +13,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   Mic, 
   Play, 
   Plus, 
   Trash, 
   CheckCircle, 
-  VoiceNetwork,
+  Headphones,
   Settings,
   AlertCircle
 } from 'lucide-react';
@@ -280,7 +287,7 @@ const VoiceProfiles = () => {
                 </div>
               ) : (
                 <div className="text-center py-12 border rounded-lg">
-                  <VoiceNetwork className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <Headphones className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Voice Profiles Yet</h3>
                   <p className="text-gray-500 mb-6">Create your first voice profile to start narrating stories</p>
                 </div>

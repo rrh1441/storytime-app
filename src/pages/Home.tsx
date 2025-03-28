@@ -1,7 +1,6 @@
-
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { BookOpen, VoiceNetwork, Sparkles, Users, Clock, BarChart } from 'lucide-react';
+import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart } from 'lucide-react';
 import StoryCard from '@/components/stories/StoryCard';
 
 // Mock data for featured stories
@@ -95,7 +94,7 @@ const Home = () => {
 
             <div className="flex flex-col items-center text-center p-6">
               <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <VoiceNetwork className="h-8 w-8 text-storytime-blue" />
+                <Headphones className="h-8 w-8 text-storytime-blue" />
               </div>
               <h3 className="text-xl font-bold mb-3">Voice Cloning</h3>
               <p className="text-gray-600">

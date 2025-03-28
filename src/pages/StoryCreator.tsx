@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +21,7 @@ import {
   Sparkles,
   BookOpen, 
   Edit, 
-  VoiceNetwork, 
+  Headphones, 
   RotateCw,
   Save,
   Play,
@@ -33,10 +32,8 @@ const StoryCreator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [storyContent, setStoryContent] = useState('');
   
-  // Mock function to simulate generating a story with AI
   const generateStory = () => {
     setIsGenerating(true);
-    // Simulate API call delay
     setTimeout(() => {
       setStoryContent(`# The Adventures of Luna the Brave
 
@@ -101,7 +98,7 @@ The End.`);
               <span>Edit Story</span>
             </TabsTrigger>
             <TabsTrigger value="voice" className="flex items-center gap-2">
-              <VoiceNetwork className="h-4 w-4" />
+              <Headphones className="h-4 w-4" />
               <span>Voice Settings</span>
             </TabsTrigger>
           </TabsList>

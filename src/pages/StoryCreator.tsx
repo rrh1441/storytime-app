@@ -1,342 +1,469 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/context/AuthContext'; // Import useAuth
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'; // Keep if used outside form
 import { Slider } from '@/components/ui/slider';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import { 
-  Sparkles,
-  BookOpen, 
-  Edit, 
-  Headphones, 
-  RotateCw,
-  Save,
-  Play,
-  PenTool
-} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // Import RHF components
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // For errors
+import { Sparkles, BookOpen, Edit, Headphones, RotateCw, Save, Play, PenTool, Loader2, AlertCircle } from 'lucide-react';
+import { Database, TablesInsert } from '@/integrations/supabase/types'; // Import generated types
 
-const StoryCreator = () => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [storyContent, setStoryContent] = useState('');
-  
-  const generateStory = () => {
-    setIsGenerating(true);
-    setTimeout(() => {
-      setStoryContent(`# The Adventures of Luna the Brave
+// --- Zod Schema for Form Validation ---
+// Matches the expected input for the Edge Function and DB structure
+const storyParamsSchema = z.object({
+  storyTitle: z.string().min(1, "Story title is required.").max(150, "Title too long"),
+  ageRange: z.string().min(1, "Age range is required."),
+  storyLength: z.string().min(1, "Story length is required."), // Corresponds to 'short', 'medium', 'long'
+  theme: z.string().min(1, "Theme is required."),
+  mainCharacter: z.string().max(50).optional().nullable(),
+  educationalFocus: z.string().optional().nullable(),
+  additionalInstructions: z.string().max(500).optional().nullable(),
+  // Add voice fields if combining steps, otherwise handle separately
+  // voiceType: z.string().optional(),
+  // voiceSelection: z.string().optional(),
+});
 
-Once upon a time, in a small village nestled between rolling hills and whispering forests, there lived a curious little girl named Luna. Luna had bright eyes that sparkled like stars and a heart full of courage.
+type StoryParamsFormValues = z.infer<typeof storyParamsSchema>;
 
-Luna loved exploring the meadows near her home, collecting colorful flowers and watching butterflies dance in the sunlight. But what she loved most was listening to her grandmother's stories about magical creatures that lived deep in the Whispering Woods.
+// Type for data needed to save the story
+type StoryInsertData = TablesInsert<'stories'>;
 
-"Grandma, are there really dragons and fairies in the woods?" Luna would ask, her eyes wide with wonder.
 
-Her grandmother would smile mysteriously and say, "The forest holds many secrets, my dear. Those with brave hearts might discover them."
+const StoryCreator: React.FC = () => {
+  const { user } = useAuth(); // Get user session
+  const queryClient = useQueryClient(); // For potential cache invalidation later
 
-One sunny morning, Luna noticed something unusual—a trail of glittering dust leading from her window toward the edge of the Whispering Woods. Without hesitation, Luna put on her red boots and followed the sparkling path.
+  const [storyContent, setStoryContent] = useState<string>('');
+  const [generatedStoryId, setGeneratedStoryId] = useState<string | null>(null); // To store ID after saving
+  const [activeTab, setActiveTab] = useState<string>("parameters");
 
-As she entered the forest, the trees seemed to lean down to greet her, their leaves rustling in whispered conversations. The path twisted and turned, taking Luna deeper into the woods than she had ever gone before.
+  // --- React Hook Form Setup ---
+  const form = useForm<StoryParamsFormValues>({
+    resolver: zodResolver(storyParamsSchema),
+    defaultValues: {
+      storyTitle: "",
+      ageRange: "4-8",
+      storyLength: "medium",
+      theme: "adventure",
+      mainCharacter: "",
+      educationalFocus: "courage",
+      additionalInstructions: "",
+    },
+  });
 
-Suddenly, Luna heard a soft whimper. Following the sound, she discovered a tiny fox with fur as white as snow, its paw caught under a fallen branch.
+  // --- Mutation to call Anthropic Edge Function ---
+  const generateStoryMutation = useMutation({
+    mutationFn: async (params: StoryParamsFormValues) => {
+      console.log("Calling anthropic-generate-story with:", params);
+      const { data, error } = await supabase.functions.invoke('anthropic-generate-story', {
+        body: params, // Pass validated form data
+      });
 
-"Don't worry, little one," Luna said gently. "I'll help you."
+      if (error) throw new Error(`Edge Function Error: ${error.message}`);
+      // Check for errors returned *within* the function's JSON response
+      if (data.error) throw new Error(`Generation Error: ${data.error}`);
+      if (!data.story) throw new Error("No story content received from function.");
 
-With all her might, Luna lifted the branch and freed the fox. To her amazement, the fox spoke!
+      return data.story as string;
+    },
+    onSuccess: (data) => {
+      setStoryContent(data);
+      setGeneratedStoryId(null); // Reset saved ID if regenerating
+      toast({ title: "Story Generated!", description: "Review your story draft below or edit it." });
+      setActiveTab("edit"); // Switch to edit tab after generation
+    },
+    onError: (error: Error) => {
+      console.error("Story generation failed:", error);
+      toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
+    },
+  });
 
-"Thank you, brave child. You have a kind heart."
+  // --- Mutation to save the story to Supabase DB ---
+   const saveStoryMutation = useMutation({
+     mutationFn: async (storyData: StoryInsertData) => {
+        console.log("Saving story to database:", storyData);
+        // Ensure user ID is present
+        if (!user?.id) throw new Error("User not logged in.");
 
-Luna gasped. "You can talk!"
+        const dataToSave: StoryInsertData = {
+            ...storyData,
+            user_id: user.id, // Associate story with logged-in user
+            content: storyContent // Use the current story content state
+        };
 
-The fox bowed its head. "I am Silverfox, guardian of these woods. You have shown courage and compassion. For that, I will grant you a wish."
+       // Use upsert: if generatedStoryId exists, update; otherwise insert
+       const { data, error } = await supabase
+         .from('stories')
+         .upsert(dataToSave)
+         .select() // Select the inserted/updated row
+         .single(); // Expect a single row back
 
-Luna thought carefully. "I don't need a wish for myself," she said. "But could you show me some of the magic my grandmother told me about?"
+       if (error) {
+         console.error("Supabase save error:", error);
+         throw error; // Let onError handle it
+       }
+       console.log("Save successful, response data:", data);
+       return data; // Return the saved story data (includes the ID)
+     },
+     onSuccess: (data) => {
+        setGeneratedStoryId(data.id); // Store the ID of the saved story
+        toast({ title: "Story Saved!", description: "Your story has been saved to your library." });
+        // Optional: Invalidate queries related to story list if needed
+        // queryClient.invalidateQueries({ queryKey: ['stories'] });
+     },
+     onError: (error: Error) => {
+       console.error("Story save failed:", error);
+       toast({ title: "Save Failed", description: error.message, variant: "destructive" });
+     },
+   });
 
-Silverfox's eyes twinkled. "That is a wish I would be happy to grant. Follow me."
 
-Together, Luna and Silverfox journeyed through the forest, where Luna met gentle giants who tended ancient trees, fairies who painted flowers with morning dew, and even a young dragon who was learning to breathe fire.
-
-As the day grew late, Silverfox led Luna back to the edge of the forest. "Remember, Luna the Brave, magic exists everywhere—in the kindness you show others, in the courage to help those in need, and in the wonder with which you see the world."
-
-Luna returned home, her heart full of joy and her mind filled with magical memories. From that day on, whenever villagers spoke of courage, they would mention Luna the Brave, the girl who found magic in the Whispering Woods.
-
-And sometimes, on quiet mornings, if Luna looked carefully out her window, she would see a white fox watching from the edge of the forest, its tail leaving a trail of glittering dust.
-
-The End.`);
-      setIsGenerating(false);
-    }, 3000);
+  // --- Form Submit Handler (triggers generation) ---
+  const onGenerateSubmit: SubmitHandler<StoryParamsFormValues> = (formData) => {
+    console.log("Form submitted for generation:", formData);
+    generateStoryMutation.mutate(formData);
   };
 
+  // --- Save Handler ---
+   const handleSaveStory = () => {
+       if (!storyContent) {
+           toast({ title: "Cannot Save", description: "Please generate or write a story first.", variant: "destructive"});
+           return;
+       }
+        if (!user) {
+            toast({ title: "Not Logged In", description: "Please log in to save your story.", variant: "destructive"});
+           return;
+        }
+
+       // Get current form values to save alongside content
+       const currentFormValues = form.getValues();
+
+       const storyDataToSave: Partial<StoryInsertData> = {
+           // If we have an ID, use it for upsert, otherwise it's an insert
+           id: generatedStoryId || undefined,
+           user_id: user.id, // Will be overwritten in mutationFn, but good practice
+           title: currentFormValues.storyTitle,
+           content: storyContent, // Current content from state
+           age_range: currentFormValues.ageRange,
+           themes: currentFormValues.theme ? [currentFormValues.theme] : [], // Assuming theme is single selection for now
+           // characters: {}, // Add if you have character input
+           educational_elements: currentFormValues.educationalFocus ? [currentFormValues.educationalFocus] : [],
+           // Add other fields from your 'stories' table if needed
+       };
+
+       saveStoryMutation.mutate(storyDataToSave as StoryInsertData); // Assert type or ensure all fields are present
+   };
+
+
+  // --- Render Component ---
   return (
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
         <h1 className="text-3xl font-bold mb-8">Story Creator Studio</h1>
-        
-        <Tabs defaultValue="parameters" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="parameters" className="flex items-center gap-2">
-              <PenTool className="h-4 w-4" />
-              <span>Story Parameters</span>
-            </TabsTrigger>
-            <TabsTrigger value="generate" className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              <span>Generate</span>
-            </TabsTrigger>
-            <TabsTrigger value="edit" className="flex items-center gap-2">
-              <Edit className="h-4 w-4" />
-              <span>Edit Story</span>
-            </TabsTrigger>
-            <TabsTrigger value="voice" className="flex items-center gap-2">
-              <Headphones className="h-4 w-4" />
-              <span>Voice Settings</span>
-            </TabsTrigger>
-          </TabsList>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <TabsContent value="parameters" className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="storyTitle">Story Title</Label>
-                  <Input id="storyTitle" placeholder="Enter a title for your story" />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <Label htmlFor="ageRange">Age Range</Label>
-                    <Select defaultValue="4-8">
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select age range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0-3">0-3 years</SelectItem>
-                        <SelectItem value="4-6">4-6 years</SelectItem>
-                        <SelectItem value="4-8">4-8 years</SelectItem>
-                        <SelectItem value="9-12">9-12 years</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="storyLength">Story Length</Label>
-                    <Select defaultValue="medium">
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select length" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="short">Short (3-5 min)</SelectItem>
-                        <SelectItem value="medium">Medium (5-10 min)</SelectItem>
-                        <SelectItem value="long">Long (10-15 min)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                <div>
-                  <Label htmlFor="theme">Theme</Label>
-                  <Select defaultValue="adventure">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select theme" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="adventure">Adventure</SelectItem>
-                      <SelectItem value="fantasy">Fantasy</SelectItem>
-                      <SelectItem value="animals">Animals</SelectItem>
-                      <SelectItem value="friendship">Friendship</SelectItem>
-                      <SelectItem value="space">Space</SelectItem>
-                      <SelectItem value="ocean">Ocean</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="mainCharacter">Main Character</Label>
-                  <Input id="mainCharacter" placeholder="Name of the main character" />
-                </div>
-                
-                <div>
-                  <Label htmlFor="educationalFocus">Educational Focus</Label>
-                  <Select defaultValue="courage">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select educational focus" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="kindness">Kindness</SelectItem>
-                      <SelectItem value="courage">Courage</SelectItem>
-                      <SelectItem value="curiosity">Curiosity</SelectItem>
-                      <SelectItem value="perseverance">Perseverance</SelectItem>
-                      <SelectItem value="teamwork">Teamwork</SelectItem>
-                      <SelectItem value="patience">Patience</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="additionalInstructions">Additional Instructions</Label>
-                  <Textarea id="additionalInstructions" placeholder="Add any specific details or elements you'd like in the story" />
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="generate" className="space-y-6">
-              <div className="border rounded-lg p-6 bg-slate-50">
-                <h3 className="text-lg font-semibold mb-3 flex items-center">
-                  <Sparkles className="h-5 w-5 mr-2 text-storytime-purple" />
-                  AI Story Generation
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Our AI will create a personalized story based on your parameters. This process typically takes less than a minute.
-                </p>
-                
-                <Button 
-                  onClick={generateStory} 
-                  disabled={isGenerating}
-                  className="bg-storytime-purple hover:bg-storytime-purple/90 text-white w-full"
-                >
-                  {isGenerating ? (
-                    <>
-                      <RotateCw className="h-4 w-4 mr-2 animate-spin" />
-                      Generating your story...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Generate Story
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              {storyContent && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">Preview</h3>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex items-center">
-                        <RotateCw className="h-4 w-4 mr-2" />
-                        Regenerate
-                      </Button>
-                      <Button size="sm" className="bg-storytime-green hover:bg-storytime-green/90 text-white flex items-center">
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="border rounded-lg p-6 bg-white max-h-[500px] overflow-y-auto story-preview">
-                    <div className="prose max-w-none">
-                      {storyContent.split('\n\n').map((paragraph, index) => {
-                        if (paragraph.startsWith('# ')) {
-                          return <h2 key={index} className="text-2xl font-bold mb-4">{paragraph.substring(2)}</h2>;
-                        }
-                        return <p key={index} className="mb-4">{paragraph}</p>;
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="edit" className="space-y-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Edit Your Story</h3>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex items-center">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Draft
-                  </Button>
-                </div>
-              </div>
-              
-              <Textarea 
-                value={storyContent} 
-                onChange={(e) => setStoryContent(e.target.value)} 
-                className="min-h-[500px] font-medium"
-              />
-            </TabsContent>
-            
-            <TabsContent value="voice" className="space-y-6">
-              <div className="space-y-6">
-                <div>
-                  <Label htmlFor="voiceType">Voice Type</Label>
-                  <Select defaultValue="professional">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select voice type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="professional">Professional Narrator</SelectItem>
-                      <SelectItem value="cloned">Your Cloned Voice</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="voiceSelection">Voice Selection</Label>
-                  <Select defaultValue="sarah">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select voice" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sarah">Sarah (Professional Female)</SelectItem>
-                      <SelectItem value="james">James (Professional Male)</SelectItem>
-                      <SelectItem value="emma">Emma (Professional Female - British)</SelectItem>
-                      <SelectItem value="michael">Michael (Professional Male - American)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label htmlFor="readingSpeed">Reading Speed</Label>
-                    <span className="text-sm text-gray-500">Normal</span>
-                  </div>
-                  <Slider defaultValue={[50]} max={100} step={1} />
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>Slower</span>
-                    <span>Faster</span>
-                  </div>
-                </div>
-                
-                <div className="border rounded-lg p-6 bg-slate-50">
-                  <h3 className="text-lg font-semibold mb-3">Voice Preview</h3>
-                  <p className="text-gray-600 mb-4">
-                    Listen to a sample of your selected voice:
-                  </p>
-                  <div className="flex justify-center">
-                    <Button className="bg-storytime-purple hover:bg-storytime-purple/90 text-white flex items-center">
-                      <Play className="h-4 w-4 mr-2" />
-                      Play Sample
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </div>
-        </Tabs>
-        
-        <div className="flex justify-between mt-8">
-          <Button variant="outline">Cancel</Button>
-          <div className="space-x-3">
-            <Button variant="outline" className="flex items-center">
-              <Save className="h-4 w-4 mr-2" />
-              Save Draft
-            </Button>
-            <Button className="bg-storytime-purple hover:bg-storytime-purple/90 text-white flex items-center">
-              <BookOpen className="h-4 w-4 mr-2" />
-              Preview Story
-            </Button>
-          </div>
-        </div>
+
+        <Form {...form}> {/* Form provider wraps Tabs or specific content */}
+          {/* We use a basic form element mainly to group buttons, actual submit via handler */}
+          <form onSubmit={(e) => e.preventDefault()}>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="parameters" className="flex items-center gap-2">
+                  <PenTool className="h-4 w-4" />
+                  <span>Parameters</span>
+                </TabsTrigger>
+                <TabsTrigger value="edit" disabled={!storyContent} className="flex items-center gap-2">
+                  <Edit className="h-4 w-4" />
+                  <span>Edit / Preview</span>
+                </TabsTrigger>
+                 <TabsTrigger value="voice" disabled={!generatedStoryId} className="flex items-center gap-2">
+                  <Headphones className="h-4 w-4" />
+                  <span>Voice & Audio</span>
+                </TabsTrigger>
+                 <TabsTrigger value="publish" disabled={!generatedStoryId} className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Publish</span>
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Form fields are now within the parameters tab */}
+              <TabsContent value="parameters" className="mt-0">
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Story Details</CardTitle>
+                        <CardDescription>Set the parameters for your AI-generated story.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <FormField
+                            control={form.control}
+                            name="storyTitle"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Story Title</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="Enter a title for your story" {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <FormField
+                                control={form.control}
+                                name="ageRange"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Age Range</FormLabel>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger><SelectValue placeholder="Select age range" /></SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="0-3">0-3 years</SelectItem>
+                                                <SelectItem value="4-6">4-6 years</SelectItem>
+                                                <SelectItem value="4-8">4-8 years</SelectItem>
+                                                <SelectItem value="9-12">9-12 years</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="storyLength"
+                                render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Story Length</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger><SelectValue placeholder="Select length" /></SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="short">Short (~3-5 min)</SelectItem>
+                                            <SelectItem value="medium">Medium (~5-10 min)</SelectItem>
+                                            <SelectItem value="long">Long (~10-15 min)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                                )}
+                            />
+                        </div>
+                         <FormField
+                            control={form.control}
+                            name="theme"
+                            render={({ field }) => (
+                               <FormItem>
+                                    <FormLabel>Theme</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                             <SelectItem value="adventure">Adventure</SelectItem>
+                                             <SelectItem value="fantasy">Fantasy</SelectItem>
+                                             <SelectItem value="animals">Animals</SelectItem>
+                                             <SelectItem value="friendship">Friendship</SelectItem>
+                                             <SelectItem value="space">Space</SelectItem>
+                                             <SelectItem value="ocean">Ocean</SelectItem>
+                                             {/* Add more themes */}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name="mainCharacter"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Main Character Name (Optional)</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="E.g., Luna, Finn, Sparky" {...field} value={field.value ?? ""} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name="educationalFocus"
+                             render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Educational Focus (Optional)</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value ?? ""} value={field.value ?? ""}>
+                                        <FormControl>
+                                             <SelectTrigger><SelectValue placeholder="Select focus (optional)" /></SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                             <SelectItem value="">None</SelectItem>
+                                             <SelectItem value="kindness">Kindness</SelectItem>
+                                             <SelectItem value="courage">Courage</SelectItem>
+                                             <SelectItem value="curiosity">Curiosity</SelectItem>
+                                             <SelectItem value="perseverance">Perseverance</SelectItem>
+                                             <SelectItem value="teamwork">Teamwork</SelectItem>
+                                             <SelectItem value="patience">Patience</SelectItem>
+                                             {/* Add more options */}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name="additionalInstructions"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Additional Instructions (Optional)</FormLabel>
+                                    <FormControl>
+                                        <Textarea placeholder="E.g., 'Include a talking squirrel', 'Set the story by a river'" {...field} value={field.value ?? ""} />
+                                    </FormControl>
+                                    <FormDescription>Max 500 characters.</FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </CardContent>
+                    <CardFooter>
+                         {/* Trigger generation via form's onSubmit */}
+                         <Button
+                            type="button" // Prevent default form submission if necessary
+                            onClick={form.handleSubmit(onGenerateSubmit)} // Use RHF submit handler
+                            disabled={generateStoryMutation.isPending}
+                            className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white"
+                         >
+                            {generateStoryMutation.isPending ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+                            ) : (
+                                <><Sparkles className="mr-2 h-4 w-4" /> Generate Story</>
+                            )}
+                        </Button>
+                    </CardFooter>
+                 </Card>
+              </TabsContent>
+
+              {/* Edit Tab - Now enabled only after generation */}
+               <TabsContent value="edit">
+                 <Card>
+                    <CardHeader>
+                        <div className="flex justify-between items-center">
+                             <div>
+                                <CardTitle>Edit & Preview Story</CardTitle>
+                                <CardDescription>Make changes to the generated text below.</CardDescription>
+                             </div>
+                             <div className="flex gap-2">
+                                 <Button
+                                     variant="outline"
+                                     size="sm"
+                                     onClick={form.handleSubmit(onGenerateSubmit)} // Re-generate
+                                     disabled={generateStoryMutation.isPending}
+                                     title="Regenerate based on current parameters"
+                                 >
+                                     <RotateCw className="mr-2 h-4 w-4" />
+                                     Regenerate
+                                 </Button>
+                                 <Button
+                                     size="sm"
+                                     onClick={handleSaveStory} // Save current content
+                                     disabled={saveStoryMutation.isPending || !storyContent}
+                                     className="bg-storytime-green hover:bg-storytime-green/90"
+                                 >
+                                     {saveStoryMutation.isPending ? (
+                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                     ) : (
+                                         <Save className="mr-2 h-4 w-4" />
+                                     )}
+                                     {generatedStoryId ? 'Update Story' : 'Save Story'}
+                                 </Button>
+                             </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                         {generateStoryMutation.isPending && (
+                            <div className="flex justify-center items-center h-64">
+                                <Loader2 className="h-8 w-8 animate-spin text-storytime-purple"/>
+                            </div>
+                         )}
+                         {generateStoryMutation.isError && (
+                              <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Generation Error</AlertTitle>
+                                <AlertDescription>{generateStoryMutation.error.message}</AlertDescription>
+                            </Alert>
+                         )}
+                         {storyContent && !generateStoryMutation.isPending && (
+                             <Textarea
+                                value={storyContent}
+                                onChange={(e) => setStoryContent(e.target.value)}
+                                className="min-h-[500px] font-mono text-sm" // Use mono for easier Markdown editing
+                                placeholder="Your generated story will appear here..."
+                            />
+                         )}
+                         {!storyContent && !generateStoryMutation.isPending && (
+                             <div className="text-center py-10 text-gray-500">
+                                Generate a story using the parameters tab first.
+                             </div>
+                         )}
+                    </CardContent>
+                 </Card>
+               </TabsContent>
+
+              {/* Voice Tab - Placeholder Content, requires TTS logic */}
+               <TabsContent value="voice">
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Add Narration</CardTitle>
+                        <CardDescription>Choose a voice and generate the audio for your saved story.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                         {/* TODO: Implement voice selection (professional/cloned) */}
+                         {/* TODO: Implement selection of specific voice ID */}
+                         {/* TODO: Implement Slider for speed/pitch? */}
+                         {/* TODO: Implement useMutation hook to call elevenlabs-tts function */}
+                         {/* TODO: Implement button to trigger TTS generation */}
+                         {/* TODO: Implement audio player to preview/play generated audioUrl */}
+                         {/* TODO: Save audioUrl/duration/voiceId to story_readings table */}
+                          <div className="text-center py-10 text-gray-500">
+                             Voice selection and audio generation coming soon! (Requires saving the story first).
+                          </div>
+                    </CardContent>
+                 </Card>
+               </TabsContent>
+
+               {/* Publish Tab - Placeholder */}
+                <TabsContent value="publish">
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Publish & Share</CardTitle>
+                        <CardDescription>Make your story public or share it.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                         {/* TODO: Implement toggle for is_public flag */}
+                         {/* TODO: Implement sharing options */}
+                         <div className="text-center py-10 text-gray-500">
+                             Publishing options coming soon! (Requires saving the story first).
+                          </div>
+                    </CardContent>
+                 </Card>
+               </TabsContent>
+
+            </Tabs>
+
+            {/* Buttons like Cancel might be outside the form/tabs if desired */}
+            {/* <div className="flex justify-between mt-8"> ... </div> */}
+          </form>
+        </Form>
       </div>
     </div>
   );

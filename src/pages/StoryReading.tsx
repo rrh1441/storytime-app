@@ -33,7 +33,7 @@ const StoryReading = () => {
       image: "https://images.unsplash.com/photo-1619532550766-12c525d012bc?q=80&w=1587&auto=format&fit=crop"
     },
     {
-      text: ""Grandma, are there really dragons and fairies in the woods?" Luna would ask, her eyes wide with wonder.\n\nHer grandmother would smile mysteriously and say, "The forest holds many secrets, my dear. Those with brave hearts might discover them."",
+      text: "\"Grandma, are there really dragons and fairies in the woods?\" Luna would ask, her eyes wide with wonder.\n\nHer grandmother would smile mysteriously and say, \"The forest holds many secrets, my dear. Those with brave hearts might discover them.\"",
       image: "https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?q=80&w=1438&auto=format&fit=crop"
     },
     {
@@ -41,11 +41,11 @@ const StoryReading = () => {
       image: "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?q=80&w=1470&auto=format&fit=crop"
     },
     {
-      text: "Suddenly, Luna heard a soft whimper. Following the sound, she discovered a tiny fox with fur as white as snow, its paw caught under a fallen branch.\n\n"Don't worry, little one," Luna said gently. "I'll help you."",
+      text: "Suddenly, Luna heard a soft whimper. Following the sound, she discovered a tiny fox with fur as white as snow, its paw caught under a fallen branch.\n\n\"Don't worry, little one,\" Luna said gently. \"I'll help you.\"",
       image: "https://images.unsplash.com/photo-1474511320723-9a56873867b5?q=80&w=1472&auto=format&fit=crop"
     },
     {
-      text: "With all her might, Luna lifted the branch and freed the fox. To her amazement, the fox spoke!\n\n"Thank you, brave child. You have a kind heart."\n\nLuna gasped. "You can talk!"",
+      text: "With all her might, Luna lifted the branch and freed the fox. To her amazement, the fox spoke!\n\n\"Thank you, brave child. You have a kind heart.\"\n\nLuna gasped. \"You can talk!\"",
       image: "https://images.unsplash.com/photo-1612957693059-13b7934e4619?q=80&w=1470&auto=format&fit=crop"
     }
   ];

@@ -1,19 +1,20 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart } from 'lucide-react';
+import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart, Bird, Leaf, Cloud, PenTool, Mic, PlayCircle } from 'lucide-react';
 import StoryCard from '@/components/stories/StoryCard';
 
-// Mock data for featured stories
+// Mock data for featured stories (keep as is or update)
 const featuredStories = [
   {
     id: '1',
     title: 'The Adventures of Luna the Brave',
+    // Use a generic placeholder path, you might replace these too
     coverImage: 'https://images.unsplash.com/photo-1619532550766-12c525d012bc?q=80&w=1587&auto=format&fit=crop',
     ageRange: 'Ages 4-8',
     duration: '5 min',
     isNew: true
   },
-  {
+   {
     id: '2',
     title: 'The Magical Forest Friends',
     coverImage: 'https://images.unsplash.com/photo-1633613286848-e6f43bbafb8d?q=80&w=1470&auto=format&fit=crop',
@@ -27,163 +28,211 @@ const featuredStories = [
     ageRange: 'Ages 5-9',
     duration: '6 min'
   }
+  // ... other featured stories
 ];
 
 const Home = () => {
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Hero Section */}
+    // Use the background color from your updated example
+    <div className="flex flex-col min-h-screen bg-[#F2FCE2]">
+      {/* Hero Section with Ghibli-inspired styling */}
       <section className="relative pt-20 pb-32 overflow-hidden">
-        <div className="container mx-auto px-6">
+        {/* Floating clouds and elements from your updated example */}
+        <div className="absolute top-20 left-20 animate-float opacity-70 z-0">
+          <Cloud className="h-20 w-20 text-[#D3E4FD]" />
+        </div>
+        <div className="absolute top-40 right-20 animate-bounce-slow opacity-60 z-0">
+          <Cloud className="h-16 w-16 text-[#D3E4FD]" />
+        </div>
+        <div className="absolute bottom-40 left-1/4 animate-bounce-slow opacity-50 z-0">
+          <Cloud className="h-24 w-24 text-[#D3E4FD]" />
+        </div>
+        <div className="absolute bottom-20 right-1/3 animate-float z-0">
+          <Leaf className="h-10 w-10 text-[#06D6A0] opacity-60" />
+        </div>
+        <div className="absolute top-48 left-1/3 animate-float z-0">
+          <Bird className="h-8 w-8 text-[#FEC6A1] opacity-70" />
+        </div>
+
+        <div className="container mx-auto px-6 relative z-10">
           <div className="flex flex-col lg:flex-row items-center">
-            <div className="w-full lg:w-1/2 mb-12 lg:mb-0">
-              <h1 className="hero-heading mb-6">
-                <span className="gradient-text">Bring your stories to life.</span> Just add voice.
+            <div className="w-full lg:w-[55%] mb-12 lg:mb-0 text-center lg:text-left"> {/* Adjusted width */}
+              {/* Ghibli-esque heading from your updated example */}
+              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl mb-6 leading-tight font-bold text-[#6b7280]"> {/* Adjusted text color */}
+                <span className="block text-[#06D6A0]">Discover</span>
+                <span className="block text-[#FF9F51]">Magical</span>
+                <span className="block text-[#4FB8FF]">Stories</span>
               </h1>
-              <p className="text-lg md:text-xl text-gray-600 mb-8">
-                Create magical, personalized children's stories with AI assistance and bring them to life with professional narration or your own voice.
+              <p className="text-lg md:text-xl text-[#6b7280] mb-8 max-w-xl mx-auto lg:mx-0"> {/* Adjusted text color */}
+                Create enchanted tales with AI, brought to life by your voice. Transport children to worlds of wonder where nature and imagination intertwine. Try your first story free!
               </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link to="/signup">
-                  <Button className="bg-storytime-purple hover:bg-storytime-purple/90 text-white font-medium text-lg px-8 py-6">
-                    Try for free
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                {/* Buttons from your updated example */}
+                <Link to="/create-story">
+                  <Button className="bg-[#4FB8FF] hover:bg-[#4FB8FF]/90 text-white font-medium text-lg px-8 py-3 rounded-full shadow-lg h-auto">
+                    Create First Story Free
                   </Button>
                 </Link>
-                <Link to="/how-it-works">
-                  <Button variant="outline" className="font-medium text-lg px-8 py-6">
-                    How it works
+                 <a href="/#how-it-works"> {/* Use anchor link */}
+                  <Button variant="outline" className="font-medium text-lg px-8 py-3 border-[#FEC6A1] text-[#FEC6A1] hover:bg-[#FEC6A1]/10 rounded-full h-auto">
+                    Explore the Magic
                   </Button>
-                </Link>
+                </a>
               </div>
             </div>
-            <div className="w-full lg:w-1/2 relative">
-              <div className="relative z-10 rounded-2xl shadow-xl overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1476234251651-f353703a034d?q=80&w=1769&auto=format&fit=crop" 
-                  alt="Parent reading to child" 
-                  className="w-full h-auto"
-                />
+            <div className="w-full lg:w-[45%] relative mt-10 lg:mt-0"> {/* Adjusted width */}
+              <div className="relative z-10 rounded-3xl shadow-xl overflow-hidden border-4 border-white transform rotate-1 aspect-video">
+                 {/* --- Use the correct image path --- */}
+                 <img
+                   src="/landing_image.jpg" // <-- Updated path
+                   alt="Two children reading a magical story book outdoors" // Updated alt text
+                   className="w-full h-full object-cover"
+                 />
+                 {/* --------------------------------- */}
               </div>
-              <div className="absolute -top-6 -right-6 w-64 h-64 bg-storytime-pink opacity-30 rounded-full blur-3xl"></div>
-              <div className="absolute -bottom-10 -left-10 w-72 h-72 bg-storytime-purple opacity-20 rounded-full blur-3xl"></div>
+              {/* Decorative elements from your updated example */}
+              <div className="absolute -top-6 -right-6 w-32 h-32 md:w-64 md:h-64 bg-[#FFDEE2] opacity-30 rounded-full blur-3xl"></div>
+              <div className="absolute -bottom-10 -left-10 w-40 h-40 md:w-72 md:h-72 bg-[#E5DEFF] opacity-40 rounded-full blur-3xl"></div>
+              <div className="absolute -bottom-8 right-10 md:right-20 transform rotate-12 z-20">
+                <Sparkles className="h-8 w-8 md:h-12 md:w-12 text-[#FFD166]" />
+              </div>
+              <div className="absolute top-10 -right-3 md:-right-6 transform -rotate-12 z-20">
+                <Leaf className="h-10 w-10 md:h-14 md:h-14 text-[#06D6A0] opacity-80" />
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-white">
+      {/* --- How It Works Section --- */}
+      <section id="how-it-works" className="py-20 bg-white scroll-mt-20">
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="section-heading mb-4">Create Unforgettable Stories</h2>
+            <h2 className="section-heading mb-4 text-[#8A4FFF]">How StoryTime Works</h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              StoryTime combines artificial intelligence and voice technology to help you create and narrate personalized children's stories in minutes.
+              Creating personalized, narrated stories is simple and fun. Follow these easy steps:
             </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <Sparkles className="h-8 w-8 text-storytime-blue" />
+          {/* Reusing the 4-step layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 items-start">
+             {/* Step 1 */}
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center">
+                  <PenTool className="h-8 w-8 text-storytime-blue" />
+                </div>
+                <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">1</span>
               </div>
-              <h3 className="text-xl font-bold mb-3">AI-Powered Stories</h3>
-              <p className="text-gray-600">
-                Generate age-appropriate, educational stories tailored to your child's interests and learning goals.
+              <h3 className="text-xl font-bold mb-3 text-storytime-blue">Set Parameters</h3>
+              <p className="text-gray-600 text-sm">
+                Choose the age range, theme, characters, length, and any educational focus for your story.
               </p>
             </div>
-
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <Headphones className="h-8 w-8 text-storytime-blue" />
+            {/* Step 2 */}
+            <div className="flex flex-col items-center text-center p-4">
+               <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-full bg-[#E7FCEC] flex items-center justify-center"> {/* Green background */}
+                  <Sparkles className="h-8 w-8 text-storytime-green" />
+                </div>
+                 <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">2</span>
               </div>
-              <h3 className="text-xl font-bold mb-3">Voice Cloning</h3>
-              <p className="text-gray-600">
-                Use your own voice or choose from our library of professional narrators to bring stories to life.
+              <h3 className="text-xl font-bold mb-3 text-storytime-green">Generate Story</h3>
+              <p className="text-gray-600 text-sm">
+                Our AI crafts a unique story based on your input. Review and edit the text as needed. (First one's free!)
               </p>
             </div>
-
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <BookOpen className="h-8 w-8 text-storytime-blue" />
+            {/* Step 3 */}
+            <div className="flex flex-col items-center text-center p-4">
+              <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> {/* Pink background */}
+                   <Mic className="h-8 w-8 text-storytime-pink" />
+                </div>
+                 <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span>
               </div>
-              <h3 className="text-xl font-bold mb-3">Interactive Reading</h3>
-              <p className="text-gray-600">
-                Engage children with interactive elements, highlighting text as it's read for a complete learning experience.
+              <h3 className="text-xl font-bold mb-3 text-storytime-pink">Add Voice</h3>
+              <p className="text-gray-600 text-sm">
+                Select a professional narrator or easily record your own voice using our voice cloning feature.
               </p>
             </div>
-
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <Users className="h-8 w-8 text-storytime-blue" />
+             {/* Step 4 */}
+            <div className="flex flex-col items-center text-center p-4">
+               <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-full bg-[#FFF5E7] flex items-center justify-center"> {/* Orange background */}
+                  <PlayCircle className="h-8 w-8 text-storytime-orange" />
+                </div>
+                 <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">4</span>
               </div>
-              <h3 className="text-xl font-bold mb-3">Personalized Characters</h3>
-              <p className="text-gray-600">
-                Create stories featuring your child as the main character, or customize characters to match their interests.
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <Clock className="h-8 w-8 text-storytime-blue" />
-              </div>
-              <h3 className="text-xl font-bold mb-3">Save Time</h3>
-              <p className="text-gray-600">
-                Create professional-quality stories in minutes, not hours, perfect for busy parents and educators.
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center text-center p-6">
-              <div className="w-16 h-16 rounded-full bg-storytime-lightBlue flex items-center justify-center mb-5">
-                <BarChart className="h-8 w-8 text-storytime-blue" />
-              </div>
-              <h3 className="text-xl font-bold mb-3">Educational Focus</h3>
-              <p className="text-gray-600">
-                Incorporate specific educational elements and learning goals into your stories with our guided tools.
+              <h3 className="text-xl font-bold mb-3 text-storytime-orange">Enjoy!</h3>
+              <p className="text-gray-600 text-sm">
+                Listen to the narrated story with highlighting text and interactive elements in the Reading Room.
               </p>
             </div>
           </div>
+           <div className="text-center mt-12">
+                <Link to="/create-story">
+                   <Button size="lg" className="bg-storytime-purple hover:bg-storytime-purple/90 text-white font-medium rounded-full">
+                     Start Creating Your Story
+                   </Button>
+                 </Link>
+           </div>
         </div>
       </section>
 
-      {/* Featured Stories Section */}
-      <section className="py-20 bg-storytime-background">
-        <div className="container mx-auto px-6">
-          <div className="flex justify-between items-center mb-10">
-            <h2 className="section-heading mb-0">Featured Stories</h2>
-            <Link to="/stories" className="text-storytime-purple hover:text-storytime-purple/90 font-semibold story-link">
-              View all stories
-            </Link>
-          </div>
+       {/* Featured Stories Section */}
+      <section className="py-20 bg-storytime-background relative overflow-hidden">
+           {/* Decorative elements (optional) */}
+           <div className="absolute top-10 left-10 opacity-20">
+             <Leaf className="h-20 w-20 text-[#06D6A0] transform rotate-45" />
+           </div>
+           <div className="absolute bottom-10 right-10 opacity-20">
+             <Cloud className="h-24 w-24 text-[#4FB8FF]" />
+           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {featuredStories.map((story) => (
-              <StoryCard
-                key={story.id}
-                id={story.id}
-                title={story.title}
-                coverImage={story.coverImage}
-                ageRange={story.ageRange}
-                duration={story.duration}
-                isNew={story.isNew}
-              />
-            ))}
-          </div>
-        </div>
+            <div className="container mx-auto px-6 relative z-10">
+                 <div className="flex justify-between items-center mb-10">
+                   <h2 className="section-heading mb-0 text-[#8A4FFF]">Magical Tales</h2> {/* Use Ghibli colors */}
+                   <Link to="/stories" className="text-[#8A4FFF] hover:text-[#8A4FFF]/90 font-semibold story-link">
+                     Explore all stories
+                   </Link>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                   {featuredStories.map((story) => (
+                     <StoryCard
+                       key={story.id}
+                       id={story.id}
+                       title={story.title}
+                       coverImage={story.coverImage}
+                       ageRange={story.ageRange}
+                       duration={story.duration}
+                       isNew={story.isNew}
+                     />
+                   ))}
+                 </div>
+            </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-storytime-purple to-storytime-pink text-white">
-        <div className="container mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to create your first story?</h2>
-          <p className="text-lg md:text-xl mb-10 max-w-2xl mx-auto opacity-90">
-            Join thousands of parents and educators who are creating magical story experiences for children.
-          </p>
-          <Link to="/signup">
-            <Button className="bg-white text-storytime-purple hover:bg-gray-100 font-medium text-lg px-8 py-6">
-              Start creating now
-            </Button>
-          </Link>
-        </div>
+       {/* CTA Section */}
+      <section className="py-20 bg-gradient-to-r from-storytime-blue to-storytime-green text-white relative overflow-hidden">
+            {/* Decorative elements (optional waves from index.css) */}
+            <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
+              <div className="wave"></div>
+            </div>
+
+            <div className="container mx-auto px-6 text-center relative z-10">
+              <h2 className="text-3xl md:text-4xl font-display font-bold mb-6">Begin your storytelling adventure</h2>
+              <p className="text-lg md:text-xl mb-10 max-w-2xl mx-auto opacity-90">
+                Join families creating magical bedtime moments with stories that inspire wonder and joy.
+              </p>
+              <Link to="/create-story">
+                <Button className="bg-white text-storytime-blue hover:bg-white/90 font-medium text-lg px-8 py-3 rounded-full shadow-lg h-auto">
+                  Create Your First Story (Free!)
+                </Button>
+              </Link>
+            </div>
+
+             <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
+              <div className="wave-bottom"></div>
+            </div>
       </section>
     </div>
   );

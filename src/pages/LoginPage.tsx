@@ -41,12 +41,12 @@ const LoginPage: React.FC = () => {
   return (
     // Apply Ghibli-esque background and centering
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)] py-12 bg-[#F2FCE2] px-4">
-       {/* Use a styled container instead of Card */}
+        {/* Use a styled container instead of Card */}
       <div className="w-full max-w-md p-8 space-y-6 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50">
         <div className="text-center">
-            <LogIn className="mx-auto h-10 w-10 text-[#4FB8FF]" />
-            <h1 className="text-3xl font-display font-bold mt-4 text-[#4FB8FF]">Welcome Back!</h1>
-            <p className="text-[#6b7280] mt-2">Log in to continue your storytelling adventure.</p> {/* Adjusted text color */}
+          <LogIn className="mx-auto h-10 w-10 text-[#4FB8FF]" />
+          <h1 className="text-3xl font-display font-bold mt-4 text-[#4FB8FF]">Welcome Back!</h1>
+          <p className="text-[#6b7280] mt-2">Log in to continue your storytelling adventure.</p> {/* Adjusted text color */}
         </div>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -84,10 +84,10 @@ const LoginPage: React.FC = () => {
           </form>
         </Form>
         <div className="mt-6 text-center text-sm text-[#6b7280]"> {/* Adjusted text color */}
-            Don't have an account?{' '}
-            <Link to="/signup" className="font-medium text-[#06D6A0] hover:text-[#06D6A0]/80 underline">
-                Sign up
-            </Link>
+          Don't have an account?{' '}
+          <Link to="/signup" className="font-medium text-[#06D6A0] hover:text-[#06D6A0]/80 underline">
+            Sign up
+          </Link>
         </div>
       </div>
     </div>

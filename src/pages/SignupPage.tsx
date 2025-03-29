@@ -47,63 +47,63 @@ const SignupPage: React.FC = () => {
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)] py-12 bg-[#F2FCE2] px-4">
       {/* Use a styled container instead of Card */}
       <div className="w-full max-w-md p-8 space-y-6 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50">
-         <div className="text-center">
-            <UserPlus className="mx-auto h-10 w-10 text-[#06D6A0]" />
-            <h1 className="text-3xl font-display font-bold mt-4 text-[#06D6A0]">Create Your Account</h1>
-            <p className="text-[#6b7280] mt-2">Join StoryTime and start creating magical tales!</p> {/* Adjusted text color */}
+        <div className="text-center">
+          <UserPlus className="mx-auto h-10 w-10 text-[#06D6A0]" />
+          <h1 className="text-3xl font-display font-bold mt-4 text-[#06D6A0]">Create Your Account</h1>
+          <p className="text-[#6b7280] mt-2">Join StoryTime and start creating magical tales!</p> {/* Adjusted text color */}
         </div>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-             <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-[#6b7280]">Name</FormLabel> {/* Adjusted text color */}
-                    <FormControl>
-                      <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" placeholder="Your Name" {...field} />
-                    </FormControl>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[#6b7280]">Name</FormLabel> {/* Adjusted text color */}
+                  <FormControl>
+                    <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" placeholder="Your Name" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[#6b7280]">Email</FormLabel> {/* Adjusted text color */}
+                  <FormControl>
+                    <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" placeholder="you@example.com" {...field} type="email" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[#6b7280]">Password</FormLabel> {/* Adjusted text color */}
+                  <FormControl>
+                    <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" type="password" placeholder="6+ characters" {...field} />
+                  </FormControl>
                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-[#6b7280]">Email</FormLabel> {/* Adjusted text color */}
-                    <FormControl>
-                      <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" placeholder="you@example.com" {...field} type="email" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-[#6b7280]">Password</FormLabel> {/* Adjusted text color */}
-                    <FormControl>
-                      <Input className="rounded-lg border-gray-300 focus:border-[#06D6A0] focus:ring-[#06D6A0]" type="password" placeholder="6+ characters" {...field} />
-                    </FormControl>
-                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-             <Button type="submit" className="w-full bg-[#06D6A0] hover:bg-[#06D6A0]/90 text-white rounded-full shadow-md h-11" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Account
-              </Button>
+                </FormItem>
+              )}
+            />
+            <Button type="submit" className="w-full bg-[#06D6A0] hover:bg-[#06D6A0]/90 text-white rounded-full shadow-md h-11" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Account
+            </Button>
           </form>
         </Form>
-         <div className="mt-6 text-center text-sm text-[#6b7280]"> {/* Adjusted text color */}
-            Already have an account?{' '}
-            <Link to="/login" className="font-medium text-[#FF9F51] hover:text-[#FF9F51]/80 underline">
-                Sign in
-            </Link>
+        <div className="mt-6 text-center text-sm text-[#6b7280]"> {/* Adjusted text color */}
+          Already have an account?{' '}
+          <Link to="/login" className="font-medium text-[#FF9F51] hover:text-[#FF9F51]/80 underline">
+            Sign in
+          </Link>
         </div>
       </div>
     </div>

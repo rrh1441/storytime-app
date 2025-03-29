@@ -39,19 +39,21 @@ const App = () => (
         <div className="flex flex-col min-h-screen">
           <Navbar /> {/* You might update Navbar later to show login/logout state */}
           <main className="flex-grow">
-            {/* --- Routes are restructured --- */}
+            {/* --- Routes restructured --- */}
             <Routes>
-              {/* Public Routes */}
+              {/* --- Public Routes --- */}
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               {/* Story reading page - assume public for now */}
               <Route path="/story/:id/play" element={<StoryReading />} />
+              {/* --- MOVED: Story Creator is now public --- */}
+              <Route path="/create-story" element={<StoryCreator />} />
 
-              {/* Protected Routes */}
+              {/* --- Protected Routes --- */}
               <Route element={<ProtectedRoute />}> {/* Wrap protected routes */}
                 <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/create-story" element={<StoryCreator />} />
+                {/* <Route path="/create-story" element={<StoryCreator />} /> // Removed from here */}
                 <Route path="/stories" element={<StoryLibrary />} />
                 <Route path="/voice-profiles" element={<VoiceProfiles />} />
                 {/* Add other routes that require login here */}

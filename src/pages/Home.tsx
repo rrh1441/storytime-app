@@ -80,7 +80,7 @@ const Home = () => {
               <div className="relative z-10 rounded-3xl shadow-xl overflow-hidden border-4 border-white transform rotate-1 aspect-video">
                  {/* --- USE YOUR IMAGE HERE --- */}
                  <img
-                   src="/landing_page.png" // <-- CORRECTED PATH
+                   src="/landing_image.png" // <-- CORRECTED PATH
                    alt="Two children reading a magical story book outdoors"
                    className="w-full h-full object-cover"
                    width="1769" height="995" // Placeholder dimensions

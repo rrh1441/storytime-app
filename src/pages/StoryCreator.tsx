@@ -1,4 +1,3 @@
-// src/pages/StoryCreator.tsx
 import React, { useState, useEffect } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,9 +18,8 @@ import { Sparkles, BookOpen, Edit, Headphones, RotateCw, Save, Play, PenTool, Lo
 import { Database, TablesInsert } from '@/integrations/supabase/types';
 import { Link } from 'react-router-dom';
 
-// --- Zod Schema for Form Validation (MODIFIED storyTitle) ---
+// Zod Schema remains the same (title is optional)
 const storyParamsSchema = z.object({
-  // MODIFIED: Make title optional
   storyTitle: z.string().max(150, "Title too long").optional().nullable(),
   ageRange: z.string().min(1, "Age range is required."),
   storyLength: z.string().min(1, "Story length is required."),
@@ -59,7 +57,7 @@ const StoryCreator: React.FC = () => {
   const form = useForm<StoryParamsFormValues>({
     resolver: zodResolver(storyParamsSchema),
     defaultValues: {
-      storyTitle: "", // Keep default as empty string, handled by placeholder
+      storyTitle: "",
       ageRange: "4-8",
       storyLength: "medium",
       theme: "adventure",
@@ -69,34 +67,27 @@ const StoryCreator: React.FC = () => {
     },
   });
 
-  // --- Generate Mutation (MODIFIED onSuccess) ---
+  // --- Generate Mutation ---
   const generateStoryMutation = useMutation({
-    // MODIFIED: Expect { story: string, title: string } from function
     mutationFn: async (params: { formData: StoryParamsFormValues, isAnonymous: boolean }): Promise<{ story: string, title: string, isAnonymous: boolean }> => {
       console.log("Calling anthropic-generate-story with:", params.formData);
-      // Pass the potentially empty title to the function
       const { data, error } = await supabase.functions.invoke('anthropic-generate-story', {
         body: params.formData,
       });
       if (error) throw new Error(`Edge Function Error: ${error.message}`);
       if (data.error) throw new Error(`Generation Error: ${data.error}`);
-      // Expecting story and title in the response
-      if (!data.story || typeof data.title === 'undefined') { // Check for title existence
+      if (!data.story || typeof data.title === 'undefined') {
            throw new Error("Invalid response received from generation function (missing story or title).");
       }
       return {
           story: data.story as string,
-          title: data.title as string, // AI generated or user-provided
+          title: data.title as string,
           isAnonymous: params.isAnonymous
       };
     },
-    // MODIFIED: Handle the returned title
     onSuccess: ({ story, title: returnedTitle, isAnonymous }) => {
       setStoryContent(story);
-      setGeneratedStoryId(null); // Reset saved ID
-
-      // Update the form field ONLY if the AI provided a title (i.e., user likely left it blank)
-      // Or if the returned title is different from what was initially there
+      setGeneratedStoryId(null);
       const currentFormTitle = form.getValues('storyTitle');
       if (returnedTitle && returnedTitle !== currentFormTitle) {
           form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
@@ -104,9 +95,7 @@ const StoryCreator: React.FC = () => {
       } else {
           toast({ title: "Story Generated!", description: "Review your story draft below." });
       }
-
       setActiveTab("edit");
-
       if (isAnonymous) {
         try {
           localStorage.setItem(FREE_GEN_KEY, 'true');
@@ -133,11 +122,10 @@ const StoryCreator: React.FC = () => {
         ...storyData,
         user_id: user.id,
         content: storyContent,
-        title: storyData.title || "Untitled Story", // Ensure title isn't null/empty in DB
+        title: storyData.title || "Untitled Story",
         educational_elements: educationalElements,
       };
       delete (dataToSave as any).educationalFocus;
-
       const { data, error } = await supabase.from('stories').upsert(dataToSave).select().single();
       if (error) throw error;
       return data;
@@ -157,20 +145,13 @@ const StoryCreator: React.FC = () => {
   const onGenerateSubmit: SubmitHandler<StoryParamsFormValues> = (formData) => {
     const isAnonymous = !user;
     console.log(`Generation attempt: Anonymous=${isAnonymous}, FreeGenUsed=${freeGenUsed}`);
-
     // // --- Temporarily Disabled Paywall/Rate Limit ---
     // if (isAnonymous && freeGenUsed) {
     //   console.log("Blocking generation: Anonymous user already used free gen.");
-    //   toast({
-    //     title: "Free Generation Limit Reached",
-    //     description: (<span>You've used your free story generation. Please <Link to="/signup" className="underline text-storytime-purple">Sign Up</Link> or <Link to="/login" className="underline text-storytime-purple">Log In</Link> to create more stories.</span>),
-    //     variant: "destructive",
-    //     duration: 10000,
-    //   });
-    //   return; // Stop the process
+    //   toast({ /* ... toast options ... */ });
+    //   return;
     // }
     // // --- End of Disabled Block ---
-
     console.log("Proceeding with generation...");
     generateStoryMutation.mutate({ formData, isAnonymous });
   };
@@ -183,7 +164,6 @@ const StoryCreator: React.FC = () => {
     const storyDataToSave: Partial<StoryInsertData> & { educationalFocus?: string | null } = {
       id: generatedStoryId || undefined,
       user_id: user.id,
-      // Use the title from the form (which might have been updated by AI)
       title: currentFormValues.storyTitle,
       content: storyContent,
       age_range: currentFormValues.ageRange,
@@ -223,6 +203,7 @@ const StoryCreator: React.FC = () => {
                   <Edit className="h-4 w-4" />
                   <span>Edit / Preview</span>
                 </TabsTrigger>
+                {/* MODIFIED: Enable tabs if story content exists */}
                 <TabsTrigger value="voice" disabled={!storyContent} className="flex items-center gap-2">
                   <Headphones className="h-4 w-4" />
                   <span>Voice & Audio</span>
@@ -237,12 +218,12 @@ const StoryCreator: React.FC = () => {
                 <Card>
                   <CardHeader><CardTitle>Story Details</CardTitle><CardDescription>Set the parameters for your AI-generated story.</CardDescription></CardHeader>
                   <CardContent className="space-y-6 pt-6">
-                    {/* MODIFIED: Updated label for storyTitle */}
                     <FormField
                       control={form.control}
                       name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
+                           {/* MODIFIED: Label updated */}
                           <FormLabel>Story Title <span className="text-xs text-gray-500">(Optional - we can make one for you!)</span></FormLabel>
                           <FormControl>
                             <Input placeholder="Enter a title (or leave blank for AI)" {...field} value={field.value ?? ""} />
@@ -251,52 +232,53 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField control={form.control} name="ageRange" render={({ field }) => (<FormItem><FormLabel>Age Range</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select age" /></SelectTrigger></FormControl><SelectContent><SelectItem value="0-3">0-3</SelectItem><SelectItem value="4-6">4-6</SelectItem><SelectItem value="4-8">4-8</SelectItem><SelectItem value="9-12">9-12</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                        <FormField control={form.control} name="storyLength" render={({ field }) => (<FormItem><FormLabel>Length</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select length" /></SelectTrigger></FormControl><SelectContent><SelectItem value="short">Short</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="long">Long</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                    </div>
-                    <FormField control={form.control} name="theme" render={({ field }) => (<FormItem><FormLabel>Theme</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger></FormControl><SelectContent><SelectItem value="adventure">Adventure</SelectItem><SelectItem value="fantasy">Fantasy</SelectItem><SelectItem value="animals">Animals</SelectItem><SelectItem value="friendship">Friendship</SelectItem><SelectItem value="space">Space</SelectItem><SelectItem value="ocean">Ocean</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                    <FormField control={form.control} name="mainCharacter" render={({ field }) => (<FormItem><FormLabel>Main Character Name <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Input placeholder="E.g., Luna, Finn" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
-                    <FormField
-                      control={form.control}
-                      name="educationalFocus"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Educational Focus <span className="text-xs text-gray-500">(Optional)</span></FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value ?? undefined}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select focus (optional)" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {/* <SelectItem value="">None</SelectItem> // Removed */}
-                              <SelectItem value="kindness">Kindness</SelectItem>
-                              <SelectItem value="courage">Courage</SelectItem>
-                              <SelectItem value="curiosity">Curiosity</SelectItem>
-                              <SelectItem value="perseverance">Perseverance</SelectItem>
-                              <SelectItem value="teamwork">Teamwork</SelectItem>
-                              <SelectItem value="patience">Patience</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField control={form.control} name="additionalInstructions" render={({ field }) => (<FormItem><FormLabel>Additional Instructions <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Textarea placeholder="E.g., Include a talking squirrel..." {...field} value={field.value ?? ""} /></FormControl><FormDescription className="text-xs">Max 500 characters.</FormDescription><FormMessage /></FormItem>)} />
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <FormField control={form.control} name="ageRange" render={({ field }) => (<FormItem><FormLabel>Age Range</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select age" /></SelectTrigger></FormControl><SelectContent><SelectItem value="0-3">0-3</SelectItem><SelectItem value="4-6">4-6</SelectItem><SelectItem value="4-8">4-8</SelectItem><SelectItem value="9-12">9-12</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                         <FormField control={form.control} name="storyLength" render={({ field }) => (<FormItem><FormLabel>Length</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select length" /></SelectTrigger></FormControl><SelectContent><SelectItem value="short">Short</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="long">Long</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                     </div>
+                     <FormField control={form.control} name="theme" render={({ field }) => (<FormItem><FormLabel>Theme</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger></FormControl><SelectContent><SelectItem value="adventure">Adventure</SelectItem><SelectItem value="fantasy">Fantasy</SelectItem><SelectItem value="animals">Animals</SelectItem><SelectItem value="friendship">Friendship</SelectItem><SelectItem value="space">Space</SelectItem><SelectItem value="ocean">Ocean</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                     <FormField control={form.control} name="mainCharacter" render={({ field }) => (<FormItem><FormLabel>Main Character Name <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Input placeholder="E.g., Luna, Finn" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                     <FormField
+                        control={form.control}
+                        name="educationalFocus"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Educational Focus <span className="text-xs text-gray-500">(Optional)</span></FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select focus (optional)" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {/* Item with value="" removed */}
+                                <SelectItem value="kindness">Kindness</SelectItem>
+                                <SelectItem value="courage">Courage</SelectItem>
+                                <SelectItem value="curiosity">Curiosity</SelectItem>
+                                <SelectItem value="perseverance">Perseverance</SelectItem>
+                                <SelectItem value="teamwork">Teamwork</SelectItem>
+                                <SelectItem value="patience">Patience</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                     <FormField control={form.control} name="additionalInstructions" render={({ field }) => (<FormItem><FormLabel>Additional Instructions <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Textarea placeholder="E.g., Include a talking squirrel..." {...field} value={field.value ?? ""} /></FormControl><FormDescription className="text-xs">Max 500 characters.</FormDescription><FormMessage /></FormItem>)} />
                   </CardContent>
                   <CardFooter>
                     <Button
-                        type="button"
-                        onClick={form.handleSubmit(onGenerateSubmit)}
-                        disabled={generateStoryMutation.isPending} // Limit check is commented out above
-                        className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white rounded-full h-11"
+                      type="button"
+                      onClick={form.handleSubmit(onGenerateSubmit)}
+                      disabled={generateStoryMutation.isPending}
+                      className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white rounded-full h-11"
                     >
-                        {generateStoryMutation.isPending ? (
-                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
-                        ) : (
-                            <><Sparkles className="mr-2 h-4 w-4" /> Generate Story {!user ? '(Free)' : ''}</>
-                        )}
+                      {/* MODIFIED: Added estimated time */}
+                      {generateStoryMutation.isPending ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating... (est. 15-30s)</>
+                      ) : (
+                        <><Sparkles className="mr-2 h-4 w-4" /> Generate Story {!user ? '(Free)' : ''}</>
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -314,8 +296,7 @@ const StoryCreator: React.FC = () => {
                     </Button>
                   </div></div></CardHeader>
                   <CardContent>
-                    {/* Optional: Add input for editing the title if needed */}
-                     <FormField
+                    <FormField
                       control={form.control}
                       name="storyTitle"
                       render={({ field }) => (
@@ -328,7 +309,6 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    {/* Story Content Textarea */}
                     {generateStoryMutation.isPending && <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-storytime-purple"/></div>}
                     {generateStoryMutation.isError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{generateStoryMutation.error.message}</AlertDescription></Alert>}
                     {storyContent && !generateStoryMutation.isPending && (<Textarea value={storyContent} onChange={(e) => setStoryContent(e.target.value)} className="min-h-[460px] font-mono text-sm" placeholder="Your generated story..."/>)}
@@ -337,28 +317,18 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
+              {/* MODIFIED: Simplified Tab Content Logic */}
               <TabsContent value="voice">
                 <Card>
                   <CardHeader><CardTitle>Add Narration</CardTitle></CardHeader>
                   <CardContent>
                     <p className='text-center p-8 text-gray-500'>
-                      {/* Show different message based on login and save state */}
-                      {!storyContent ? 'Generate and save a story first.' : !user ? 'Please log in or sign up to add narration.' : !generatedStoryId ? 'Please save your story before adding narration.' : 'Audio generation coming soon.'}
+                       {/* Placeholder - Actual implementation needed here */}
+                       Audio generation and voice selection options will appear here.
+                       {user && !generatedStoryId && ' Please save your story first.'}
+                       {!user && ' Login or Sign Up to save and add narration.'}
                     </p>
-                    {(!user && storyContent) && ( // Show login/signup only if not logged in AND story exists
-                      <div className='flex justify-center gap-4'>
-                          <Link to="/login"><Button>Login</Button></Link>
-                          <Link to="/signup"><Button variant="outline">Sign Up</Button></Link>
-                      </div>
-                    )}
-                     {(user && !generatedStoryId && storyContent) && ( // Show save button only if logged in but not saved AND story exists
-                      <div className='flex justify-center gap-4'>
-                           <Button size="sm" onClick={handleSaveStory} disabled={saveStoryMutation.isPending} className="bg-storytime-green hover:bg-storytime-green/90">
-                                {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
-                                Save Story to Add Voice
-                           </Button>
-                      </div>
-                    )}
+                    {/* Login/Save buttons are handled on the Edit tab */}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -367,23 +337,12 @@ const StoryCreator: React.FC = () => {
                   <CardHeader><CardTitle>Publish & Share</CardTitle></CardHeader>
                   <CardContent>
                     <p className='text-center p-8 text-gray-500'>
-                       {/* Show different message based on login and save state */}
-                       {!storyContent ? 'Generate and save a story first.' : !user ? 'Please log in or sign up to publish stories.' : !generatedStoryId ? 'Please save your story before publishing.' : 'Publishing options coming soon.'}
+                       {/* Placeholder - Actual implementation needed here */}
+                       Publishing options will appear here once the story is saved.
+                       {user && !generatedStoryId && ' Please save your story first.'}
+                       {!user && ' Login or Sign Up to save and publish stories.'}
                     </p>
-                     {(!user && storyContent) && ( // Show login/signup only if not logged in AND story exists
-                       <div className='flex justify-center gap-4'>
-                           <Link to="/login"><Button>Login</Button></Link>
-                           <Link to="/signup"><Button variant="outline">Sign Up</Button></Link>
-                       </div>
-                     )}
-                      {(user && !generatedStoryId && storyContent) && ( // Show save button only if logged in but not saved AND story exists
-                       <div className='flex justify-center gap-4'>
-                            <Button size="sm" onClick={handleSaveStory} disabled={saveStoryMutation.isPending} className="bg-storytime-green hover:bg-storytime-green/90">
-                                 {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
-                                 Save Story to Publish
-                            </Button>
-                       </div>
-                     )}
+                     {/* Login/Save buttons are handled on the Edit tab */}
                   </CardContent>
                 </Card>
               </TabsContent>

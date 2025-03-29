@@ -25,7 +25,7 @@ const StoryReading = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [progress, setProgress] = useState(0);
   
-  // Mock story data
+  // Moc k story data
   const storyTitle = "The Adventures of Luna the Brave";
   const storyPages = [
     {

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart, Bird, Leaf, Cloud, PenTool, Mic, PlayCircle } from 'lucide-react';
 import StoryCard from '@/components/stories/StoryCard';
 
-// Mock data - Update placeholders later
+// Mock data - Ensure this matches or update as needed
 const featuredStories = [
   {
     id: '1',
@@ -31,6 +31,7 @@ const featuredStories = [
 
 const Home = () => {
   return (
+    // Use the background color from your updated example
     <div className="flex flex-col min-h-screen bg-[#F2FCE2]"> {/* Ghibli background color */}
       {/* Hero Section */}
       <section className="relative pt-20 pb-24 md:pb-32 overflow-hidden">
@@ -79,7 +80,7 @@ const Home = () => {
               <div className="relative z-10 rounded-3xl shadow-xl overflow-hidden border-4 border-white transform rotate-1 aspect-video">
                  {/* --- USE YOUR IMAGE HERE --- */}
                  <img
-                   src="/landing_image.jpg" // <-- Path to your image in the /public folder
+                   src="/landing_page.png" // <-- CORRECTED PATH
                    alt="Two children reading a magical story book outdoors"
                    className="w-full h-full object-cover"
                    width="1769" height="995" // Placeholder dimensions
@@ -194,7 +195,7 @@ const Home = () => {
                         key={story.id}
                         id={story.id}
                         title={story.title}
-                        coverImage={story.coverImage} // These should ideally be updated too
+                        coverImage={story.coverImage}
                         ageRange={story.ageRange}
                         duration={story.duration}
                         isNew={story.isNew}
@@ -205,9 +206,9 @@ const Home = () => {
        </section>
 
        {/* CTA Section */}
-       <section className="py-20 bg-gradient-to-r from-[#4FB8FF] to-[#06D6A0] text-white relative overflow-hidden">
+       <section className="py-20 bg-gradient-to-r from-storytime-blue to-storytime-green text-white relative overflow-hidden">
             {/* Waves */}
-             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
+             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20">
                <div className="wave"></div>
              </div>
              <div className="container mx-auto px-6 text-center relative z-10">
@@ -215,13 +216,13 @@ const Home = () => {
                <p className="text-lg md:text-xl mb-10 max-w-2xl mx-auto opacity-90">
                  Join families creating magical bedtime moments with stories that inspire wonder and joy.
                </p>
-               <Link to="/create-story"> {/* Link to creator */}
-                 <Button className="bg-white text-[#4FB8FF] hover:bg-white/90 font-medium text-lg px-8 py-3 rounded-full shadow-lg h-auto">
+               <Link to="/create-story">
+                 <Button className="bg-white text-storytime-blue hover:bg-white/90 font-medium text-lg px-8 py-3 rounded-full shadow-lg h-auto">
                    Create Your First Story (Free!)
                  </Button>
                </Link>
              </div>
-              <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
+              <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20">
                <div className="wave-bottom"></div>
              </div>
        </section>

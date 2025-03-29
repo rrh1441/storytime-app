@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart, Bird, Leaf, Cloud, PenTool, Mic, PlayCircle } from 'lucide-react';
 import StoryCard from '@/components/stories/StoryCard';
 
-// Mock data - Ensure this matches or update as needed
+// Mock data - Update placeholders later
 const featuredStories = [
   {
     id: '1',
@@ -82,7 +82,7 @@ const Home = () => {
                    src="/landing_image.jpg" // <-- Path to your image in the /public folder
                    alt="Two children reading a magical story book outdoors"
                    className="w-full h-full object-cover"
-                   width="1769" height="995" // Optional: Add dimensions for better performance
+                   width="1769" height="995" // Placeholder dimensions
                  />
                  {/* --------------------------- */}
               </div>
@@ -102,7 +102,6 @@ const Home = () => {
 
       {/* --- How It Works Section --- */}
       <section id="how-it-works" className="py-20 bg-white scroll-mt-20">
-         {/* ... (Keep the How It Works section content as provided in the previous response) ... */}
          <div className="container mx-auto px-6">
            <div className="text-center mb-16">
              <h2 className="section-heading mb-4 text-[#8A4FFF]">How StoryTime Works</h2>
@@ -175,7 +174,7 @@ const Home = () => {
       </section>
 
        {/* Featured Stories Section */}
-       <section className="py-20 bg-[#F9FAFC] relative overflow-hidden"> {/* Existing background is fine */}
+       <section className="py-20 bg-storytime-background relative overflow-hidden">
             <div className="absolute top-10 left-10 opacity-20">
               <Leaf className="h-20 w-20 text-[#06D6A0] transform rotate-45" />
             </div>
@@ -195,7 +194,7 @@ const Home = () => {
                         key={story.id}
                         id={story.id}
                         title={story.title}
-                        coverImage={story.coverImage}
+                        coverImage={story.coverImage} // These should ideally be updated too
                         ageRange={story.ageRange}
                         duration={story.duration}
                         isNew={story.isNew}
@@ -207,8 +206,8 @@ const Home = () => {
 
        {/* CTA Section */}
        <section className="py-20 bg-gradient-to-r from-[#4FB8FF] to-[#06D6A0] text-white relative overflow-hidden">
-             {/* Waves */}
-             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20">
+            {/* Waves */}
+             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
                <div className="wave"></div>
              </div>
              <div className="container mx-auto px-6 text-center relative z-10">
@@ -216,13 +215,13 @@ const Home = () => {
                <p className="text-lg md:text-xl mb-10 max-w-2xl mx-auto opacity-90">
                  Join families creating magical bedtime moments with stories that inspire wonder and joy.
                </p>
-               <Link to="/create-story">
+               <Link to="/create-story"> {/* Link to creator */}
                  <Button className="bg-white text-[#4FB8FF] hover:bg-white/90 font-medium text-lg px-8 py-3 rounded-full shadow-lg h-auto">
                    Create Your First Story (Free!)
                  </Button>
                </Link>
              </div>
-              <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20">
+              <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> {/* Match background */}
                <div className="wave-bottom"></div>
              </div>
        </section>

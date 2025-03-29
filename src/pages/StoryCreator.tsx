@@ -22,11 +22,11 @@ import { Sparkles, BookOpen, Edit, Headphones, RotateCw, Save, Play, PenTool, Lo
 import { Database, TablesInsert } from '@/integrations/supabase/types';
 import { Link } from 'react-router-dom'; // Import Link
 
-// --- Zod Schema ---
+// --- Zod Schema for Form Validation ---
 const storyParamsSchema = z.object({
   storyTitle: z.string().min(1, "Story title is required.").max(150, "Title too long"),
   ageRange: z.string().min(1, "Age range is required."),
-  storyLength: z.string().min(1, "Story length is required."),
+  storyLength: z.string().min(1, "Story length is required."), // Corresponds to 'short', 'medium', 'long'
   theme: z.string().min(1, "Theme is required."),
   mainCharacter: z.string().max(50).optional().nullable(),
   educationalFocus: z.string().optional().nullable(),
@@ -56,9 +56,10 @@ const StoryCreator: React.FC = () => {
       setFreeGenUsed(true);
     } else {
         console.log("No free generation flag found.");
-        setFreeGenUsed(false);
+        setFreeGenUsed(false); // Ensure it's false if not found
     }
-  }, []);
+  }, []); // Empty dependency array - run only once on mount
+
 
   const form = useForm<StoryParamsFormValues>({
     resolver: zodResolver(storyParamsSchema),
@@ -85,7 +86,7 @@ const StoryCreator: React.FC = () => {
       if (!data.story) throw new Error("No story content received from function.");
       return { story: data.story as string, isAnonymous: params.isAnonymous }; // Pass isAnonymous through
     },
-     onSuccess: ({ story, isAnonymous }) => {
+     onSuccess: ({ story, isAnonymous }) => { // Destructure response
       setStoryContent(story);
       setGeneratedStoryId(null); // Reset saved ID
       toast({ title: "Story Generated!", description: "Review your story draft below or edit it." });
@@ -94,7 +95,7 @@ const StoryCreator: React.FC = () => {
       if (isAnonymous) {
         try {
             localStorage.setItem(FREE_GEN_KEY, 'true');
-            setFreeGenUsed(true);
+            setFreeGenUsed(true); // Update state immediately
             console.log("Free generation used and flag set in localStorage.");
         } catch (e) {
             console.error("Failed to set localStorage item:", e);
@@ -140,7 +141,7 @@ const StoryCreator: React.FC = () => {
         variant: "destructive",
         duration: 10000,
       });
-      return;
+      return; // Stop the process
     }
     console.log("Proceeding with generation...");
     generateStoryMutation.mutate({ formData, isAnonymous }); // Pass isAnonymous status
@@ -153,7 +154,7 @@ const StoryCreator: React.FC = () => {
        const currentFormValues = form.getValues();
        const storyDataToSave: Partial<StoryInsertData> = {
            id: generatedStoryId || undefined,
-           user_id: user.id, // Overwritten in mutationFn, but good practice
+           user_id: user.id, // Redundant here but good practice
            title: currentFormValues.storyTitle,
            content: storyContent,
            age_range: currentFormValues.ageRange,
@@ -208,7 +209,7 @@ const StoryCreator: React.FC = () => {
                <TabsContent value="parameters" className="mt-0">
                  <Card>
                     <CardHeader><CardTitle>Story Details</CardTitle><CardDescription>Set the parameters for your AI-generated story.</CardDescription></CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-6 pt-6">
                         {/* All FormField components */}
                         <FormField control={form.control} name="storyTitle" render={({ field }) => (<FormItem><FormLabel>Story Title</FormLabel><FormControl><Input placeholder="Enter a title..." {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -224,8 +225,9 @@ const StoryCreator: React.FC = () => {
                         <Button
                             type="button"
                             onClick={form.handleSubmit(onGenerateSubmit)}
+                            // Disable if mutation pending OR if anonymous and free gen used
                             disabled={generateStoryMutation.isPending || (!user && freeGenUsed)}
-                            className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white rounded-full h-11"
+                            className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white rounded-full h-11" // Style consistency
                         >
                             {generateStoryMutation.isPending ? (
                                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>

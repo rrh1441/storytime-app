@@ -9,7 +9,163 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      stories: {
+        Row: {
+          age_range: string | null
+          characters: Json | null
+          content: string | null
+          cover_image: string | null
+          created_at: string
+          educational_elements: string[] | null
+          id: string
+          is_public: boolean | null
+          themes: string[] | null
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age_range?: string | null
+          characters?: Json | null
+          content?: string | null
+          cover_image?: string | null
+          created_at?: string
+          educational_elements?: string[] | null
+          id?: string
+          is_public?: boolean | null
+          themes?: string[] | null
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          age_range?: string | null
+          characters?: Json | null
+          content?: string | null
+          cover_image?: string | null
+          created_at?: string
+          educational_elements?: string[] | null
+          id?: string
+          is_public?: boolean | null
+          themes?: string[] | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      story_readings: {
+        Row: {
+          audio_url: string | null
+          created_at: string
+          duration: number | null
+          elevenlabs_professional_voice_id: string | null
+          id: string
+          story_id: string
+          voice_profile_id: string | null
+        }
+        Insert: {
+          audio_url?: string | null
+          created_at?: string
+          duration?: number | null
+          elevenlabs_professional_voice_id?: string | null
+          id?: string
+          story_id: string
+          voice_profile_id?: string | null
+        }
+        Update: {
+          audio_url?: string | null
+          created_at?: string
+          duration?: number | null
+          elevenlabs_professional_voice_id?: string | null
+          id?: string
+          story_id?: string
+          voice_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_readings_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_readings_voice_profile_id_fkey"
+            columns: ["voice_profile_id"]
+            isOneToOne: false
+            referencedRelation: "voice_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string | null
+          subscription_tier: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          name?: string | null
+          subscription_tier?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string | null
+          subscription_tier?: string | null
+        }
+        Relationships: []
+      }
+      voice_profiles: {
+        Row: {
+          created_at: string
+          elevenlabs_voice_id: string | null
+          id: string
+          is_default: boolean | null
+          name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

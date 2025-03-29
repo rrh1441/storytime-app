@@ -19,8 +19,8 @@ import { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sparkles, BookOpen, Edit, Headphones, RotateCw, Save, Play, Pause,
-  PenTool, Loader2, AlertCircle, LogIn, Download, Share2, MicVocal, ServerCrash, Volume2, Copy
-} from 'lucide-react'; // Added Copy icon
+  PenTool, Loader2, AlertCircle, LogIn, Download, Share2, MicVocal, ServerCrash, Volume2, Copy, CheckCircle // Added CheckCircle
+} from 'lucide-react';
 import { Database, TablesInsert } from '@/integrations/supabase/types';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -97,13 +97,13 @@ const StoryCreator: React.FC = () => {
   });
 
   // Fetch ElevenLabs Voices
-  const { data: voiceData, isLoading: isLoadingVoices, isError: isVoiceError, error: voiceError } = useQuery<{ voices: ElevenLabsVoice[] }, Error>({
+  const { data: voiceData, isLoading: isLoadingVoices, isError: isVoiceError } = useQuery<{ voices: ElevenLabsVoice[] }, Error>({ // Removed unused error variable
       queryKey: ['elevenlabs-voices'],
       queryFn: async () => {
           console.log("Fetching ElevenLabs voices via Edge Function...");
           const { data, error } = await supabase.functions.invoke('get-elevenlabs-voices');
           if (error) throw new Error(`Failed to fetch voices: ${error.message}`);
-          if (data?.error) throw new Error(`Failed to fetch voices: ${data.error}`); // Check nested error too
+          if (data?.error) throw new Error(`Failed to fetch voices: ${data.error}`);
           if (!data || !Array.isArray(data.voices)) throw new Error("Received invalid data format for voices.");
           console.log(`Received ${data.voices.length} voices.`);
           return data;
@@ -121,13 +121,12 @@ const StoryCreator: React.FC = () => {
         if (!data?.story || typeof data.title === 'undefined') throw new Error("Invalid response received from generation function (missing story or title).");
         return { story: data.story as string, title: data.title as string, isAnonymous: params.isAnonymous };
       },
-      onSuccess: ({ story, title: returnedTitle, isAnonymous }) => {
+      onSuccess: ({ story, title: returnedTitle }) => { // Removed unused isAnonymous
         setStoryContent(story);
         setGeneratedStoryId(null);
         setGeneratedAudioUrl(null);
         setSelectedVoiceId(undefined);
         const currentFormTitle = form.getValues('storyTitle');
-        // Update title in form state (used for saving)
         if (returnedTitle && (!currentFormTitle || currentFormTitle.trim() === '')) {
           form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
           toast({ title: "Story & Title Generated!", description: "Review the story text below. The title is the first line." });
@@ -168,7 +167,7 @@ const StoryCreator: React.FC = () => {
         if (!user?.id) throw new Error("User not logged in.");
         const educationalElements = storyData.educationalFocus ? [storyData.educationalFocus] : null;
         const dataToSave: StoryInsertData = {
-            ...storyData, // Includes ID if updating
+            ...storyData,
             user_id: user.id,
             content: storyContent,
             title: storyData.title || "Untitled Story",
@@ -186,7 +185,7 @@ const StoryCreator: React.FC = () => {
       onSuccess: (data) => {
         setGeneratedStoryId(data.id);
         toast({ title: "Story Saved!", description: "Your story has been saved to your library." });
-        queryClient.invalidateQueries({ queryKey: ['userStories', user?.id] }); // Ensure Dashboard updates
+        queryClient.invalidateQueries({ queryKey: ['userStories', user?.id] });
       },
       onError: (error: Error) => {
         toast({ title: "Save Failed", description: error.message, variant: "destructive" });
@@ -208,7 +207,6 @@ const StoryCreator: React.FC = () => {
               variant: "destructive",
               action: (
                   <>
-                      {/* Pass current location in state for redirect */}
                       <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button>
                       <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button>
                   </>
@@ -221,9 +219,9 @@ const StoryCreator: React.FC = () => {
           return;
       }
       const currentFormValues = form.getValues();
-      // Extract title from first line of content for saving, or use form value as fallback
       const firstLineBreak = storyContent.indexOf('\n');
       const potentialTitleFromContent = (firstLineBreak === -1 ? storyContent : storyContent.substring(0, firstLineBreak)).trim();
+      // Use title from content first, then form value (potentially AI generated), then fallback
       const titleToSave = potentialTitleFromContent || currentFormValues.storyTitle || "Untitled Story";
 
       // Update form state just before saving (doesn't affect UI in edit tab anymore)
@@ -265,9 +263,19 @@ const StoryCreator: React.FC = () => {
         previewAudioRef.current = audio;
         const onEnded = () => { setIsPreviewPlaying(false); cleanupListeners(); };
         const onPause = () => { setIsPreviewPlaying(false); cleanupListeners(); };
-        const cleanupListeners = () => { /* ... */ };
+        const cleanupListeners = () => {
+             if(previewAudioRef.current){
+                 previewAudioRef.current.removeEventListener('ended', onEnded);
+                 previewAudioRef.current.removeEventListener('pause', onPause);
+             }
+        };
         audio.addEventListener('ended', onEnded); audio.addEventListener('pause', onPause);
-        audio.play().then(() => setIsPreviewPlaying(true)).catch(err => { /* ... */ });
+        audio.play().then(() => setIsPreviewPlaying(true)).catch(err => {
+            console.error("Error playing preview:", err);
+            toast({ title: "Preview Error", variant: "destructive" });
+            setIsPreviewPlaying(false);
+            previewAudioRef.current = null;
+        });
      };
 
     // Handle Download using Blob
@@ -282,35 +290,47 @@ const StoryCreator: React.FC = () => {
             const objectUrl = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = objectUrl;
-            // Use form's storyTitle value for filename consistency
             const safeTitle = form.getValues('storyTitle')?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'storytime_audio';
             const fileName = `${safeTitle}.mp3`;
             link.download = fileName;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(objectUrl);
             toast({ title: "Download Started", description: `Saved as ${fileName}` });
-        } catch (error: any) { /* ... */ }
+        } catch (error: any) {
+            console.error("Download failed:", error);
+            toast({ title: "Download Failed", description: error.message, variant: "destructive" });
+         }
         finally { setIsDownloading(false); }
     };
 
     // Helper to get selected voice details
     const selectedVoiceDetails = selectedVoiceId ? voiceData?.voices?.find(v => v.voice_id === selectedVoiceId) : null;
 
+
   // --- Render ---
   return (
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
         <h1 className="text-3xl font-bold mb-4 font-display text-gray-700">Story Creator Studio</h1>
-        {!user && freeGenUsed && ( /* Free gen warning */ )}
+         {/* --- FIXED: Free gen warning Alert --- */}
+        {!user && freeGenUsed && (
+          <Alert variant="destructive" className="mb-6 animate-fade-in">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Free Generation Used</AlertTitle>
+            <AlertDescription>
+              You've used your free story generation. Please <Link to="/login" className="underline font-medium">Login</Link> or <Link to="/signup" className="underline font-medium">Sign Up</Link> to create more.
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* --- END FIX --- */}
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
-            {/* MODIFIED: grid-cols-4, added Share trigger */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+               {/* Changed grid-cols-4 back, added Share trigger */}
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="parameters" className="flex items-center gap-2"><PenTool className="h-4 w-4" /><span>Story Outline</span></TabsTrigger>
                 <TabsTrigger value="edit" disabled={!storyContent} className="flex items-center gap-2"><Edit className="h-4 w-4" /><span>Edit / Preview</span></TabsTrigger>
                 <TabsTrigger value="voice" disabled={!storyContent} className="flex items-center gap-2"><Headphones className="h-4 w-4" /><span>Voice & Audio</span></TabsTrigger>
-                {/* ADDED: Share Tab Trigger */}
                 <TabsTrigger value="share" disabled={!generatedStoryId || !generatedAudioUrl} className="flex items-center gap-2"><Share2 className="h-4 w-4" /><span>Share Story</span></TabsTrigger>
               </TabsList>
 
@@ -322,7 +342,7 @@ const StoryCreator: React.FC = () => {
                         <CardDescription>Provide the details for the story (~3 min length).</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pt-6">
-                        {/* Fields remain the same: Title(Optional), AgeRange, Theme, MainCharacter(Opt), EduFocus(Opt), AddInstructions(Opt) */}
+                         {/* Fields: Title(Opt), AgeRange, Theme, MainCharacter(Opt), EduFocus(Opt), AddInstructions(Opt) */}
                          <FormField control={form.control} name="storyTitle" render={({ field }) => (<FormItem><FormLabel>Story Title <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Input placeholder="Enter a title (or leave blank for AI)" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
                          <FormField control={form.control} name="ageRange" render={({ field }) => (<FormItem><FormLabel>Age Range</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select age" /></SelectTrigger></FormControl><SelectContent><SelectItem value="0-3">0-3</SelectItem><SelectItem value="4-6">4-6</SelectItem><SelectItem value="4-8">4-8</SelectItem><SelectItem value="9-12">9-12</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                          <FormField control={form.control} name="theme" render={({ field }) => (<FormItem><FormLabel>Theme</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger></FormControl><SelectContent><SelectItem value="adventure">Adventure</SelectItem><SelectItem value="fantasy">Fantasy</SelectItem><SelectItem value="animals">Animals</SelectItem><SelectItem value="friendship">Friendship</SelectItem><SelectItem value="space">Space</SelectItem><SelectItem value="ocean">Ocean</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
@@ -346,7 +366,6 @@ const StoryCreator: React.FC = () => {
                         <CardDescription>Review and edit the generated story text. The first line will be used as the title when saving.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pt-6">
-                        {/* Story Content Textarea */}
                         <div className="space-y-2">
                         <Label htmlFor="story-content-editor">Story Text (Edit Title as First Line)</Label>
                         <Textarea
@@ -373,7 +392,7 @@ const StoryCreator: React.FC = () => {
               {/* Voice & Audio Tab Content */}
               <TabsContent value="voice">
                  <Card>
-                    <CardHeader><CardTitle>Add Narration</CardTitle><CardDescription>Select a voice, preview it (optional), and generate the audio.</CardDescription></CardHeader>
+                    <CardHeader><CardTitle>Add Narration</CardTitle><CardDescription>Select a voice, preview it, generate audio, and save your story.</CardDescription></CardHeader>
                     <CardContent className="space-y-6">
                         {/* Voice Selection */}
                         <div className='space-y-2'>
@@ -414,12 +433,13 @@ const StoryCreator: React.FC = () => {
                                     {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     {isDownloading ? 'Preparing...' : 'Download MP3'}
                                 </Button>
-                                {/* Save Button uses handleSaveStory (modified for redirect) */}
+                                {/* Save Button uses handleSaveStory */}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                     <span className="w-full" tabIndex={!user ? 0 : undefined}>
                                         <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90">
                                             {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
+                                            {/* Change button text based on whether story exists */}
                                             {generatedStoryId ? 'Update Story' : 'Save to Library'}
                                         </Button>
                                     </span>
@@ -446,13 +466,14 @@ const StoryCreator: React.FC = () => {
               </TabsContent>
 
               {/* ADDED: Share Tab Content */}
-              <TabsContent value="share">
+               <TabsContent value="share">
                  <Card>
                   <CardHeader>
                     <CardTitle>Share Your Story</CardTitle>
                     <CardDescription>Your story is ready! Share it or listen in the reading room.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4 pt-6 text-center">
+                     {/* Check if story is saved AND audio exists */}
                      {generatedStoryId && generatedAudioUrl ? (
                          <div className='space-y-4'>
                             <p className='text-green-600 font-medium'>

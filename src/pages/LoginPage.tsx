@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 // Removed Card imports
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from '@/hooks/use-toast';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Loader2, LogIn } from 'lucide-react'; // Use LogIn icon
 
 const loginSchema = z.object({
@@ -26,12 +26,30 @@ const LoginPage: React.FC = () => {
   });
   const { login, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
     try {
       await login({ email: data.email, password: data.password });
       toast({ title: "Login Successful!", description: "Welcome back!" });
-      navigate('/dashboard'); // Redirect after successful login
+      
+      // Redirect logic after successful login
+      const state = location.state as any;
+      if (state && state.from) {
+        if (state.returnToTab) {
+          // Return to the specific tab in StoryCreator
+          navigate(state.from.pathname, { 
+            state: { returnToTab: state.returnToTab },
+            replace: true 
+          });
+        } else {
+          // Just return to the previous location
+          navigate(state.from, { replace: true });
+        }
+      } else {
+        // Default redirect to dashboard if no specific return location
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error: any) {
       console.error("Login failed:", error);
       toast({ title: "Login Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });

@@ -1,3 +1,4 @@
+// src/pages/SignupPage.tsx
 import React from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 // Removed Card imports
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from '@/hooks/use-toast';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Loader2, UserPlus } from 'lucide-react';
 
 const signupSchema = z.object({
@@ -25,7 +26,8 @@ const SignupPage: React.FC = () => {
     defaultValues: { name: '', email: '', password: '' },
   });
   const { signup, loading } = useAuth();
-  // const navigate = useNavigate();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit: SubmitHandler<SignupFormValues> = async (data) => {
     try {
@@ -34,8 +36,25 @@ const SignupPage: React.FC = () => {
         password: data.password,
         options: { data: { name: data.name } }
       });
-      toast({ title: "Signup Successful!", description: "Please check your email to verify your account." });
-      form.reset();
+      toast({ title: "Signup Successful!", description: "Welcome to StoryTime!" });
+      
+      // Redirect logic after successful signup
+      const state = location.state as any;
+      if (state && state.from) {
+        if (state.returnToTab) {
+          // Return to the specific tab in StoryCreator
+          navigate(state.from.pathname, { 
+            state: { returnToTab: state.returnToTab },
+            replace: true 
+          });
+        } else {
+          // Just return to the previous location
+          navigate(state.from, { replace: true });
+        }
+      } else {
+        // Default redirect to dashboard if no specific return location
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error: any) {
       console.error("Signup failed:", error);
       toast({ title: "Signup Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });

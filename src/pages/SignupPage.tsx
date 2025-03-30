@@ -40,19 +40,24 @@ const SignupPage: React.FC = () => {
       
       // Redirect logic after successful signup
       const state = location.state as any;
+      console.log("Signup redirect state:", state);
+      
       if (state && state.from) {
         if (state.returnToTab) {
           // Return to the specific tab in StoryCreator
-          navigate(state.from.pathname, { 
+          console.log(`Redirecting to ${state.from} with tab ${state.returnToTab}`);
+          navigate(state.from, { 
             state: { returnToTab: state.returnToTab },
             replace: true 
           });
         } else {
           // Just return to the previous location
+          console.log(`Redirecting to ${state.from}`);
           navigate(state.from, { replace: true });
         }
       } else {
         // Default redirect to dashboard if no specific return location
+        console.log("No state found, redirecting to dashboard");
         navigate('/dashboard', { replace: true });
       }
     } catch (error: any) {

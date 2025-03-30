@@ -69,8 +69,10 @@ const StoryCreator: React.FC = () => {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const mainAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Scroll to top on initial component mount
   useEffect(() => {
@@ -81,13 +83,18 @@ const StoryCreator: React.FC = () => {
   useEffect(() => {
     // Check if we're returning from login/signup with a specified tab to return to
     if (location.state && location.state.returnToTab) {
+      console.log("Returning to tab:", location.state.returnToTab);
       setActiveTab(location.state.returnToTab);
+      
       // Clear the state so it doesn't happen again on refresh
-      const newLocation = { ...location, state: { ...location.state } };
-      delete newLocation.state.returnToTab;
-      navigate(newLocation, { replace: true });
+      // Use history.replaceState to avoid triggering a new navigation
+      window.history.replaceState(
+        {}, 
+        document.title,
+        location.pathname
+      );
     }
-  }, [user, location, navigate]);
+  }, [location]);
 
   // Scroll to top when the active tab changes
   useEffect(() => {
@@ -404,10 +411,32 @@ const StoryCreator: React.FC = () => {
                    <CardContent className="space-y-6 pt-6">
                     {generatedAudioUrl ? (
                       <div className="space-y-4">
-                        <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
+                        <audio 
+                          ref={el => mainAudioRef.current = el}
+                          controls 
+                          src={generatedAudioUrl} 
+                          className="w-full rounded-md shadow-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-storytime-blue"
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onEnded={() => setIsPlaying(false)}>
+                          Your browser does not support the audio element.
+                        </audio>
                         <div className="grid grid-cols-1 gap-3">
-                          <Button type="button" className="w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white">
-                            <Volume2 className="mr-2 h-4 w-4" /> Listen
+                          <Button 
+                            type="button" 
+                            className="w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white"
+                            onClick={() => {
+                              if (mainAudioRef.current) {
+                                if (isPlaying) {
+                                  mainAudioRef.current.pause();
+                                } else {
+                                  mainAudioRef.current.play();
+                                }
+                              }
+                            }}
+                          >
+                            {isPlaying ? <Pause className="mr-2 h-4 w-4" /> : <Volume2 className="mr-2 h-4 w-4" />} 
+                            {isPlaying ? 'Pause' : 'Listen'}
                           </Button>
                           
                           <Button type="button" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl)

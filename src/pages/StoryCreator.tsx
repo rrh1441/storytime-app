@@ -451,7 +451,7 @@ const StoryCreator: React.FC = () => {
                           
                           <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90 text-white">
                             {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Save to Library{user ? '' : ' (Requires Login)'}
+                            Save to Library{user ? '' : ' (Requires Login Before Creation)'}
                           </Button>
                         </div>
                         

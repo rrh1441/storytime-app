@@ -160,7 +160,7 @@ const Home: React.FC = () => {
              <div className="flex flex-col items-center text-center p-4">
                 <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> <Mic className="h-8 w-8 text-storytime-pink" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span> </div>
                 <h3 className="text-xl font-bold mb-3 text-storytime-pink">Add Voice</h3>
-                <p className="text-gray-600 text-sm"> Select a professional narrator or easily record your own voice using our voice cloning feature. </p>
+                <p className="text-gray-600 text-sm"> Select a professional narrator (available now) or easily record your own voice (coming soon) </p>
              </div>
              {/* --- END FIX --- */}
               {/* Step 4 */}

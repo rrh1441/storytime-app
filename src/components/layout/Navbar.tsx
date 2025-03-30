@@ -7,21 +7,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { user, logout, loading } = useAuth(); // Get user, logout function, and loading state
+  const { user, logout, loading } = useAuth();
 
-  // Reset menu state on component mount and when location changes
   useEffect(() => {
     setIsMenuOpen(false);
   }, []);
 
   const handleLogout = async () => {
     try {
-      setIsMenuOpen(false); // Close menu first
+      setIsMenuOpen(false);
       await logout();
-      // Optional: Redirect or show toast on successful logout
     } catch (error) {
       console.error("Logout failed:", error);
-      // Optional: Show error toast
     }
   };
 
@@ -30,7 +27,9 @@ const Navbar = () => {
       <div className="container mx-auto flex justify-between items-center">
         <Link to="/" className="flex items-center space-x-2">
           <BookOpen className="h-8 w-8 text-[#8A4FFF]" />
-          <span className="text-2xl font-display font-bold text-[#4FB8FF]">StoryTime</span>
+          <span className="text-2xl font-display font-bold text-[#4FB8FF]">
+            StoryTime
+          </span>
         </Link>
 
         {/* Desktop Menu */}
@@ -98,10 +97,11 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile Menu - Keep it below the navbar */}
+      {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="fixed inset-x-0 bottom-0 top-[69px] z-30 bg-white md:hidden">
-          <div className="flex flex-col p-8 space-y-6">
+        <div className="fixed inset-0 top-[69px] z-30 bg-white md:hidden pointer-events-none">
+          {/* Only this inner div can be clicked; the outer overlay won't block anything else. */}
+          <div className="flex flex-col p-8 space-y-6 pointer-events-auto">
             <a
               href="/#how-it-works"
               className="text-xl font-medium text-gray-700 hover:text-[#8A4FFF]"
@@ -135,7 +135,7 @@ const Navbar = () => {
             ) : (
               <div className="pt-4 space-y-4">
                 <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="outline" className="w-full font-medium rounded-full">
+                  <Button className="w-full font-medium rounded-full" variant="outline">
                     Log in
                   </Button>
                 </Link>

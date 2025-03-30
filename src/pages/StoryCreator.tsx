@@ -160,12 +160,6 @@ const StoryCreator: React.FC = () => {
         },
         onSuccess: ({ audioUrl }) => {
             setGeneratedAudioUrl(audioUrl);
-            toast({ title: "Narration Generated!", description: "You can now play or download the audio." });
-        },
-        onError: (error: Error) => {
-            console.error("Audio generation failed:", error);
-            toast({ title: "Audio Generation Failed", description: error.message, variant: "destructive" });
-            setGeneratedAudioUrl(null);
         },
     });
 
@@ -376,35 +370,41 @@ const StoryCreator: React.FC = () => {
                       <Button type="button" onClick={handleGenerateNarration} disabled={!storyContent || !selectedVoiceId || generateAudioMutation.isPending || isLoadingVoices || isVoiceError} className='w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white'> {generateAudioMutation.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating Audio... (est. 15-60s)</>) : (<><MicVocal className="mr-2 h-4 w-4" /> Generate Narration</>)} </Button>
                      {/* Audio Generation Error Display */}
                      {generateAudioMutation.isError && (<Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Audio Generation Error</AlertTitle><AlertDescription>{generateAudioMutation.error.message}</AlertDescription></Alert>)}
-                     {/* Audio Player & Action Buttons */}
+                     {/* Audio Player & Save Your Story Section */}
                      {generatedAudioUrl && !generateAudioMutation.isPending && (
                        <div className="space-y-4 pt-4 border-t">
-                         <h4 className='font-medium'>Listen, Share, or Save:</h4>
+                         <h4 className='font-medium'>Save Your Story</h4>
                          <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
-                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                           <Button type="button" variant="outline" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}}> <Copy className="mr-2 h-4 w-4" /> Copy Audio Link </Button>
-                           <Button type="button" variant="outline" onClick={handleDownloadAudio} disabled={isDownloading}> {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} {isDownloading ? 'Preparing...' : 'Download MP3'} </Button>
-                           {/* --- CORRECTED TOOLTIP TRIGGER --- */}
-                           <Tooltip>
-                             <TooltipTrigger asChild>
-                               <Button
-                                 type="button"
-                                 onClick={handleSaveStory}
-                                 disabled={!user || saveStoryMutation.isPending}
-                                 className="w-full bg-storytime-green hover:bg-storytime-green/90" // Moved w-full here
-                               >
-                                 {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
-                                 {generatedStoryId ? 'Update Story' : 'Save to Library'}
-                               </Button>
-                             </TooltipTrigger>
-                             {!user && (
-                               <TooltipContent>
-                                 <p>Please <Link to="/login" className="underline">Login</Link> or <Link to="/signup" className="underline">Sign Up</Link> to save.</p>
-                               </TooltipContent>
-                             )}
-                           </Tooltip>
-                           {/* --- END CORRECTION --- */}
+                         <div className="grid grid-cols-1 gap-3">
+                           <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="bg-storytime-green hover:bg-storytime-green/90 text-white w-full">
+                             {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                             Save to Library{user ? '' : ' (Requires Login)'}
+                           </Button>
+                           
+                           <Button type="button" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl)
+                                .then(() => toast({ title: "Audio Link Copied!"}))}} className="w-full">
+                             <Share2 className="mr-2 h-4 w-4" /> Share
+                           </Button>
+                           
+                           <Button type="button" onClick={handleDownloadAudio} disabled={isDownloading} className="w-full">
+                             {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                             Download
+                           </Button>
+                           
+                           <Button type="button" className="w-full">
+                             <Volume2 className="mr-2 h-4 w-4" /> Listen
+                           </Button>
                          </div>
+                         
+                         {!user && (
+                           <div className="text-center mt-4">
+                             <p className="text-sm text-muted-foreground mb-2">You need to be logged in to save your story.</p>
+                             <div className="flex justify-center space-x-2">
+                               <Link to="/login"><Button variant="outline" size="sm">Log In</Button></Link>
+                               <Link to="/signup"><Button size="sm">Sign Up</Button></Link>
+                             </div>
+                           </div>
+                         )}
                        </div>
                      )}
                    </CardContent>

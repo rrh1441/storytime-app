@@ -77,6 +77,18 @@ const StoryCreator: React.FC = () => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Check for return tab from login/signup
+  useEffect(() => {
+    // Check if we're returning from login/signup with a specified tab to return to
+    if (location.state && location.state.returnToTab) {
+      setActiveTab(location.state.returnToTab);
+      // Clear the state so it doesn't happen again on refresh
+      const newLocation = { ...location, state: { ...location.state } };
+      delete newLocation.state.returnToTab;
+      navigate(newLocation, { replace: true });
+    }
+  }, [user, location, navigate]);
+
   // Scroll to top when the active tab changes
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -207,7 +219,16 @@ const StoryCreator: React.FC = () => {
       if (!user) {
          toast({
              title: "Login Required", description: "Please log in or sign up to save stories.", variant: "destructive",
-             action: ( <> <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button> <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button> </> )
+             action: ( <> 
+               <Button onClick={() => navigate('/login', { 
+                 state: { from: location, returnToTab: activeTab }, 
+                 replace: true 
+               })} size="sm">Login</Button> 
+               <Button onClick={() => navigate('/signup', { 
+                 state: { from: location, returnToTab: activeTab }, 
+                 replace: true 
+               })} size="sm" variant="outline">Sign Up</Button> 
+             </> )
          });
          return;
       }
@@ -385,21 +406,21 @@ const StoryCreator: React.FC = () => {
                       <div className="space-y-4">
                         <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
                         <div className="grid grid-cols-1 gap-3">
-                          <Button type="button" className="w-full">
+                          <Button type="button" className="w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white">
                             <Volume2 className="mr-2 h-4 w-4" /> Listen
                           </Button>
                           
                           <Button type="button" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl)
-                               .then(() => toast({ title: "Audio Link Copied!"}))}} className="w-full">
+                               .then(() => toast({ title: "Audio Link Copied!"}))}} className="w-full bg-storytime-purple hover:bg-storytime-purple/90 text-white">
                             <Share2 className="mr-2 h-4 w-4" /> Share
                           </Button>
                           
-                          <Button type="button" onClick={handleDownloadAudio} disabled={isDownloading} className="w-full">
+                          <Button type="button" onClick={handleDownloadAudio} disabled={isDownloading} className="w-full bg-storytime-orange hover:bg-storytime-orange/90 text-white">
                             {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                             Download
                           </Button>
                           
-                          <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full">
+                          <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90 text-white">
                             {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             Save to Library{user ? '' : ' (Requires Login)'}
                           </Button>

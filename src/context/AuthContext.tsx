@@ -1,6 +1,8 @@
+// Update to src/context/AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { useNavigate, useLocation } from 'react-router-dom';
 // Make sure your types file is generated and path is correct
 import { Database } from '@/integrations/supabase/types';
 
@@ -24,6 +26,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile>(null);
   const [loading, setLoading] = useState(true); // Start loading true
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Function to fetch profile data
   const fetchProfile = useCallback(async (userId: string | undefined) => {
@@ -82,6 +86,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(currentUser);
         await fetchProfile(currentUser?.id); // Fetch profile when auth state changes
         setLoading(false); // Set loading false after processing change
+        
+        // Handle redirect after login/signup based on returnToTab state or default to dashboard
+        if (_event === 'SIGNED_IN') {
+          // Check if we have a specific place to return to
+          const state = location.state;
+          if (state && state.from) {
+            if (state.returnToTab) {
+              // Return to the specific tab in StoryCreator
+              navigate(state.from.pathname, { 
+                state: { returnToTab: state.returnToTab },
+                replace: true 
+              });
+            } else {
+              // Just return to the previous location
+              navigate(state.from, { replace: true });
+            }
+          } else {
+            // Default redirect to dashboard if no specific return location
+            navigate('/dashboard');
+          }
+        }
       }
     );
 
@@ -90,7 +115,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log("Unsubscribing auth listener.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchProfile]); // Depend on fetchProfile
+  }, [fetchProfile, navigate, location]); // Include navigate and location in dependencies
 
   // --- Auth Actions ---
   const login = async (credentials: { email: string; password?: string; provider?: 'google' | 'github' }) => {

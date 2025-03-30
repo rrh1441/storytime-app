@@ -74,6 +74,19 @@ const StoryCreator: React.FC = () => {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // --- ADDED: Scroll to top on initial component mount ---
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []); // Empty dependency array means this runs only once on mount
+  // --- END ADDED ---
+
+  // --- ADDED: Scroll to top when the active tab changes ---
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Use smooth scroll for tab changes
+  }, [activeTab]); // Run this effect whenever activeTab changes
+  // --- END ADDED ---
+
+  // Existing effect for free gen check & audio cleanup
   useEffect(() => {
     const storedValue = localStorage.getItem(FREE_GEN_KEY);
     setFreeGenUsed(storedValue === 'true');
@@ -118,7 +131,6 @@ const StoryCreator: React.FC = () => {
     // Story Generation Mutation
     const generateStoryMutation = useMutation({
       mutationFn: async (params: { formData: StoryParamsFormValues, isAnonymous: boolean }): Promise<{ story: string, title: string, isAnonymous: boolean }> => {
-        // formData no longer contains ageRange
         const { data, error } = await supabase.functions.invoke('anthropic-generate-story', { body: params.formData });
         if (error) throw new Error(`Edge Function Error: ${error.message}`);
         if (data?.error) throw new Error(`Generation Error: ${data.error}`);
@@ -126,18 +138,21 @@ const StoryCreator: React.FC = () => {
         return { story: data.story as string, title: data.title as string, isAnonymous: params.isAnonymous };
       },
       onSuccess: ({ story, title: returnedTitle }) => {
-         setStoryContent(story);
-         setGeneratedStoryId(null);
-         setGeneratedAudioUrl(null);
-         setSelectedVoiceId(undefined);
-         const currentFormTitle = form.getValues('storyTitle');
-         if (returnedTitle && (!currentFormTitle || currentFormTitle.trim() === '')) {
-           form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
-           toast({ title: "Story & Title Generated!", description: "Review the story text below. The title is the first line." });
-         } else {
-           toast({ title: "Story Generated!", description: "Review the story text below. The title is the first line." });
-         }
-         setActiveTab("edit");
+        setStoryContent(story);
+        setGeneratedStoryId(null);
+        setGeneratedAudioUrl(null);
+        setSelectedVoiceId(undefined);
+        const currentFormTitle = form.getValues('storyTitle');
+        if (returnedTitle && (!currentFormTitle || currentFormTitle.trim() === '')) {
+          form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
+          toast({ title: "Story & Title Generated!", description: "Review the story text below. The title is the first line." });
+        } else {
+          toast({ title: "Story Generated!", description: "Review the story text below. The title is the first line." });
+        }
+        setActiveTab("edit");
+        // Scroll is handled by useEffect on activeTab, but keep here just in case
+        // for immediate feedback after this specific action.
+        window.scrollTo(0, 0);
       },
       onError: (error: Error) => {
          toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
@@ -170,17 +185,17 @@ const StoryCreator: React.FC = () => {
       mutationFn: async (storyData: StoryInsertData) => {
         if (!user?.id) throw new Error("User not logged in.");
         const educationalElements = storyData.educationalFocus ? [storyData.educationalFocus] : null;
-        // ageRange is correctly omitted as it's not in StoryInsertData type or form values
+        // Prepare data to save - ageRange is naturally excluded now
         const dataToSave: StoryInsertData = {
             ...storyData,
             user_id: user.id,
             content: storyContent,
             title: storyData.title || "Untitled Story",
             educational_elements: educationalElements,
-            // age_range: storyData.age_range, // This field is now removed
+            // No age_range field here
         };
-        delete (dataToSave as any).educationalFocus;
-        // Remove age_range specifically if it somehow sneaked in (shouldn't happen with TS)
+        delete (dataToSave as any).educationalFocus; // Remove temp field
+        // Ensure age_range isn't somehow present before upsert
         delete (dataToSave as any).age_range;
 
         const { data, error } = await supabase
@@ -204,7 +219,7 @@ const StoryCreator: React.FC = () => {
     // Generate Submit Handler
     const onGenerateSubmit: SubmitHandler<StoryParamsFormValues> = (formData) => {
       const isAnonymous = !user;
-      // formData no longer contains ageRange
+      // formData no longer includes ageRange
       generateStoryMutation.mutate({ formData, isAnonymous });
     };
 
@@ -215,7 +230,13 @@ const StoryCreator: React.FC = () => {
               title: "Login Required",
               description: "Please log in or sign up to save stories.",
               variant: "destructive",
-              action: ( <> <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button> <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button> </> )
+              action: (
+                  <>
+                      {/* Pass current location in state for redirect */}
+                      <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button>
+                      <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button>
+                  </>
+              )
           });
           return;
       }
@@ -229,7 +250,7 @@ const StoryCreator: React.FC = () => {
       const titleToSave = potentialTitleFromContent || currentFormValues.storyTitle || "Untitled Story";
       form.setValue('storyTitle', titleToSave, { shouldValidate: false });
 
-      // ageRange is correctly omitted here
+      // Prepare data for saving - ageRange is correctly omitted
       const storyDataToSave: Partial<StoryInsertData> & { educationalFocus?: string | null } = {
         id: generatedStoryId || undefined,
         user_id: user.id,
@@ -327,6 +348,7 @@ const StoryCreator: React.FC = () => {
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+               {/* Grid cols is 4, Share tab trigger is present */}
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="parameters" className="flex items-center gap-2"><PenTool className="h-4 w-4" /><span>Story Outline</span></TabsTrigger>
                 <TabsTrigger value="edit" disabled={!storyContent} className="flex items-center gap-2"><Edit className="h-4 w-4" /><span>Edit / Preview</span></TabsTrigger>
@@ -339,7 +361,7 @@ const StoryCreator: React.FC = () => {
                  <Card>
                     <CardHeader>
                         <CardTitle>Story Outline</CardTitle>
-                        {/* UPDATED Description */}
+                        {/* Updated Description */}
                         <CardDescription>Provide the story details (story is generated for young children, ~3 min length).</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pt-6">
@@ -361,31 +383,9 @@ const StoryCreator: React.FC = () => {
               {/* Edit / Preview Tab Content */}
               <TabsContent value="edit">
                  <Card>
-                    <CardHeader>
-                        <CardTitle>Edit / Preview Story</CardTitle>
-                        <CardDescription>Review and edit the generated story text. The first line will be used as the title when saving.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6 pt-6">
-                        <div className="space-y-2">
-                        <Label htmlFor="story-content-editor">Story Text (Edit Title as First Line)</Label>
-                        <Textarea
-                            id="story-content-editor"
-                            placeholder="Generated story text will appear here..."
-                            value={storyContent}
-                            onChange={(e) => setStoryContent(e.target.value)}
-                            rows={15}
-                            className="min-h-[300px] text-base leading-relaxed"
-                        />
-                        </div>
-                    </CardContent>
-                    <CardFooter className="flex justify-between">
-                        <Button type="button" variant="outline" onClick={() => setActiveTab('parameters')}>
-                            <RotateCw className="mr-2 h-4 w-4" /> Re-generate
-                        </Button>
-                        <Button type="button" onClick={() => setActiveTab('voice')} disabled={!storyContent} className="bg-storytime-blue hover:bg-storytime-blue/90 text-white">
-                            Next: Add Voice <Headphones className="ml-2 h-4 w-4" />
-                        </Button>
-                    </CardFooter>
+                    <CardHeader> <CardTitle>Edit / Preview Story</CardTitle> <CardDescription>Review and edit the generated story text. The first line will be used as the title when saving.</CardDescription> </CardHeader>
+                    <CardContent className="space-y-6 pt-6"> <div className="space-y-2"> <Label htmlFor="story-content-editor">Story Text (Edit Title as First Line)</Label> <Textarea id="story-content-editor" placeholder="Generated story text will appear here..." value={storyContent} onChange={(e) => setStoryContent(e.target.value)} rows={15} className="min-h-[300px] text-base leading-relaxed" /> </div> </CardContent>
+                    <CardFooter className="flex justify-between"> <Button type="button" variant="outline" onClick={() => setActiveTab('parameters')}> <RotateCw className="mr-2 h-4 w-4" /> Re-generate </Button> <Button type="button" onClick={() => setActiveTab('voice')} disabled={!storyContent} className="bg-storytime-blue hover:bg-storytime-blue/90 text-white"> Next: Add Voice <Headphones className="ml-2 h-4 w-4" /> </Button> </CardFooter>
                  </Card>
               </TabsContent>
 
@@ -411,7 +411,7 @@ const StoryCreator: React.FC = () => {
                             {selectedVoiceId && !isLoadingVoices && !isVoiceError && !selectedVoiceDetails?.preview_url && (<p className='text-xs text-destructive pt-1'>Preview not available.</p>)}
                         </div>
 
-                        {/* Generate Narration Button */}
+                        {/* Generate Narration Button (with time estimate) */}
                          <Button type="button" onClick={handleGenerateNarration} disabled={!storyContent || !selectedVoiceId || generateAudioMutation.isPending || isLoadingVoices || isVoiceError} className='w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white'>
                             {generateAudioMutation.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating Audio... (est. 15-60s)</>) : (<><MicVocal className="mr-2 h-4 w-4" /> Generate Narration</>)}
                         </Button>
@@ -423,58 +423,26 @@ const StoryCreator: React.FC = () => {
                             <h4 className='font-medium'>Listen, Share, or Save:</h4>
                             <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <Button type="button" variant="outline" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}}>
-                                    <Copy className="mr-2 h-4 w-4" /> Copy Audio Link
-                                </Button>
-                                <Button type="button" variant="outline" onClick={handleDownloadAudio} disabled={isDownloading}>
-                                    {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                                    {isDownloading ? 'Preparing...' : 'Download MP3'}
-                                </Button>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                    <span className="w-full" tabIndex={!user ? 0 : undefined}>
-                                        <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90">
-                                            {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
-                                            {generatedStoryId ? 'Update Story' : 'Save to Library'}
-                                        </Button>
-                                    </span>
-                                    </TooltipTrigger>
-                                    {!user && ( <TooltipContent> <p>Please <Link to="/login" className="underline">Login</Link> or <Link to="/signup" className="underline">Sign Up</Link> to save.</p> </TooltipContent> )}
-                                </Tooltip>
+                                <Button type="button" variant="outline" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}}> <Copy className="mr-2 h-4 w-4" /> Copy Audio Link </Button>
+                                <Button type="button" variant="outline" onClick={handleDownloadAudio} disabled={isDownloading}> {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} {isDownloading ? 'Preparing...' : 'Download MP3'} </Button>
+                                <Tooltip> <TooltipTrigger asChild> <span className="w-full" tabIndex={!user ? 0 : undefined}> <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90"> {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)} {generatedStoryId ? 'Update Story' : 'Save to Library'} </Button> </span> </TooltipTrigger> {!user && ( <TooltipContent> <p>Please <Link to="/login" className="underline">Login</Link> or <Link to="/signup" className="underline">Sign Up</Link> to save.</p> </TooltipContent> )} </Tooltip>
                             </div>
                             </div>
                         )}
                     </CardContent>
-                    <CardFooter className="flex justify-end">
-                        <Button type="button" onClick={() => setActiveTab('share')} disabled={!generatedStoryId || !generatedAudioUrl} className="bg-storytime-orange hover:bg-storytime-orange/90 text-white">
-                            Next: Share Story <Share2 className="ml-2 h-4 w-4" />
-                        </Button>
-                    </CardFooter>
+                    <CardFooter className="flex justify-end"> <Button type="button" onClick={() => setActiveTab('share')} disabled={!generatedStoryId || !generatedAudioUrl} className="bg-storytime-orange hover:bg-storytime-orange/90 text-white"> Next: Share Story <Share2 className="ml-2 h-4 w-4" /> </Button> </CardFooter>
                  </Card>
               </TabsContent>
 
               {/* Share Tab Content */}
                <TabsContent value="share">
                  <Card>
-                  <CardHeader>
-                    <CardTitle>Share Your Story</CardTitle>
-                    <CardDescription>Your story is ready! Share it or listen in the reading room.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-6 text-center">
-                     {generatedStoryId && generatedAudioUrl ? (
-                         <div className='space-y-4'>
-                            <p className='text-green-600 font-medium'> <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved and audio generated! </p>
-                            <div className='flex flex-col sm:flex-row gap-4 justify-center'>
-                                {generatedStoryId && ( <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer"> <Button className="w-full sm:w-auto bg-storytime-green hover:bg-storytime-green/90"> <BookOpen className="mr-2 h-4 w-4"/> Open Reading Room </Button> </Link> )}
-                                {generatedAudioUrl && ( <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}> <Copy className="mr-2 h-4 w-4"/> Copy Sharable Audio Link </Button> )}
-                            </div>
-                         </div>
-                     ) : (
-                          <p className='text-muted-foreground italic py-8'> Please save your story and generate audio first (on the 'Voice & Audio' tab). </p>
-                     )}
-                  </CardContent>
-                 <CardFooter className='flex justify-center'></CardFooter>
-                </Card>
+                    <CardHeader> <CardTitle>Share Your Story</CardTitle> <CardDescription>Your story is ready! Share it or listen in the reading room.</CardDescription> </CardHeader>
+                    <CardContent className="space-y-4 pt-6 text-center">
+                     {generatedStoryId && generatedAudioUrl ? ( <div className='space-y-4'> <p className='text-green-600 font-medium'> <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved and audio generated! </p> <div className='flex flex-col sm:flex-row gap-4 justify-center'> {generatedStoryId && ( <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer"> <Button className="w-full sm:w-auto bg-storytime-green hover:bg-storytime-green/90"> <BookOpen className="mr-2 h-4 w-4"/> Open Reading Room </Button> </Link> )} {generatedAudioUrl && ( <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}> <Copy className="mr-2 h-4 w-4"/> Copy Sharable Audio Link </Button> )} </div> </div> ) : ( <p className='text-muted-foreground italic py-8'> Please save your story and generate audio first (on the 'Voice & Audio' tab). </p> )}
+                    </CardContent>
+                    <CardFooter className='flex justify-center'></CardFooter>
+                  </Card>
               </TabsContent>
 
             </Tabs>

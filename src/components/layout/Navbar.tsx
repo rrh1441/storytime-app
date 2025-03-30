@@ -35,9 +35,7 @@ const Navbar = () => {
           <a href="/#how-it-works" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors"> {/* Use anchor link */}
             How It Works
           </a>
-           <Link to="/stories" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors">
-            Stories
-          </Link>
+          {/* Removed Stories link */}
           {/* Conditionally show Dashboard/Auth buttons */}
           {loading ? (
             <div className='flex items-center space-x-3'>
@@ -93,13 +91,7 @@ const Navbar = () => {
             >
               How It Works
             </a>
-             <Link
-              to="/stories"
-              className="text-xl font-medium text-gray-700 hover:text-[#8A4FFF]"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Stories
-            </Link>
+            {/* Removed Stories link */}
              {loading ? (
                 <div className="pt-4 space-y-4">
                     <Skeleton className='h-10 w-full rounded-full' />

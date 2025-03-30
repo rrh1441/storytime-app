@@ -451,7 +451,7 @@ const StoryCreator: React.FC = () => {
                           
                           <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90 text-white">
                             {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Save to Library{user ? '' : ' (Requires Login Before Creation)'}
+                            Save to Library{user ? '' : ' (Requires Login)'}
                           </Button>
                         </div>
                         
@@ -470,9 +470,9 @@ const StoryCreator: React.FC = () => {
                             <p className="text-green-600 font-medium mb-4">
                               <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved successfully!
                             </p>
-                            <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer">
+                            <Link to="/dashboard">
                               <Button className="bg-storytime-green hover:bg-storytime-green/90">
-                                <BookOpen className="mr-2 h-4 w-4"/> Open in Reading Room
+                                <BookOpen className="mr-2 h-4 w-4"/> View in Dashboard
                               </Button>
                             </Link>
                           </div>

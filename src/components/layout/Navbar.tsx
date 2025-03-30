@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { BookOpen, Menu, X } from "lucide-react"; 
-import { useAuth } from '@/context/AuthContext'; 
-import { Skeleton } from '@/components/ui/skeleton'; 
+import { BookOpen, Menu, X } from "lucide-react";
+import { useAuth } from '@/context/AuthContext';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -35,33 +35,48 @@ const Navbar = () => {
 
         {/* Desktop Menu */}
         <div className="hidden md:flex items-center space-x-8">
-          <a href="/#how-it-works" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors">
+          <a
+            href="/#how-it-works"
+            className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors"
+          >
             How It Works
           </a>
-          
+
           {loading ? (
-            <div className='flex items-center space-x-3'>
-                <Skeleton className='h-9 w-24 rounded-full' />
-                <Skeleton className='h-9 w-24 rounded-full' />
+            <div className="flex items-center space-x-3">
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-24 rounded-full" />
             </div>
           ) : user ? (
             <>
-              <Link to="/dashboard" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors">
+              <Link
+                to="/dashboard"
+                className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors"
+              >
                 Dashboard
               </Link>
-              <Button variant="outline" className="font-medium border-[#FF9F51] text-[#FF9F51] hover:bg-[#FF9F51]/10 rounded-full h-9 px-4" onClick={handleLogout}>
+              <Button
+                variant="outline"
+                className="font-medium border-[#FF9F51] text-[#FF9F51] hover:bg-[#FF9F51]/10 rounded-full h-9 px-4"
+                onClick={handleLogout}
+              >
                 Log Out
               </Button>
             </>
           ) : (
             <div className="flex items-center space-x-3">
               <Link to="/login">
-                <Button variant="outline" className="font-medium border-gray-300 hover:border-[#8A4FFF] hover:text-[#8A4FFF] rounded-full h-9 px-4">
+                <Button
+                  variant="outline"
+                  className="font-medium border-gray-300 hover:border-[#8A4FFF] hover:text-[#8A4FFF] rounded-full h-9 px-4"
+                >
                   Log in
                 </Button>
               </Link>
               <Link to="/signup">
-                <Button className="bg-[#4FB8FF] hover:bg-[#4FB8FF]/90 text-white font-medium rounded-full shadow-sm h-9 px-4">
+                <Button
+                  className="bg-[#4FB8FF] hover:bg-[#4FB8FF]/90 text-white font-medium rounded-full shadow-sm h-9 px-4"
+                >
                   Sign Up Free
                 </Button>
               </Link>
@@ -75,16 +90,17 @@ const Navbar = () => {
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           aria-label="Toggle menu"
         >
-          {isMenuOpen ?
-            <X className="h-6 w-6 text-gray-700" /> :
+          {isMenuOpen ? (
+            <X className="h-6 w-6 text-gray-700" />
+          ) : (
             <Menu className="h-6 w-6 text-gray-700" />
-          }
+          )}
         </button>
       </div>
 
-      {/* Mobile Menu - Fixed to not block other elements */}
+      {/* Mobile Menu - Keep it below the navbar */}
       {isMenuOpen && (
-         <div className="fixed inset-0 top-[69px] z-30 bg-white md:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-[69px] z-30 bg-white md:hidden">
           <div className="flex flex-col p-8 space-y-6">
             <a
               href="/#how-it-works"
@@ -93,39 +109,43 @@ const Navbar = () => {
             >
               How It Works
             </a>
-            
-             {loading ? (
-                <div className="pt-4 space-y-4">
-                    <Skeleton className='h-10 w-full rounded-full' />
-                    <Skeleton className='h-10 w-full rounded-full' />
-                </div>
-             ) : user ? (
-                <>
-                 <Link
+
+            {loading ? (
+              <div className="pt-4 space-y-4">
+                <Skeleton className="h-10 w-full rounded-full" />
+                <Skeleton className="h-10 w-full rounded-full" />
+              </div>
+            ) : user ? (
+              <>
+                <Link
                   to="/dashboard"
                   className="text-xl font-medium text-gray-700 hover:text-[#8A4FFF]"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Dashboard
                 </Link>
-                 <Button variant="outline" className="w-full font-medium border-[#FF9F51] text-[#FF9F51] hover:bg-[#FF9F51]/10 rounded-full" onClick={handleLogout}>
-                    Log Out
+                <Button
+                  variant="outline"
+                  className="w-full font-medium border-[#FF9F51] text-[#FF9F51] hover:bg-[#FF9F51]/10 rounded-full"
+                  onClick={handleLogout}
+                >
+                  Log Out
+                </Button>
+              </>
+            ) : (
+              <div className="pt-4 space-y-4">
+                <Link to="/login" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="outline" className="w-full font-medium rounded-full">
+                    Log in
                   </Button>
-                </>
-              ) : (
-                <div className="pt-4 space-y-4">
-                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full font-medium rounded-full">
-                      Log in
-                    </Button>
-                  </Link>
-                  <Link to="/signup" onClick={() => setIsMenuOpen(false)}>
-                    <Button className="w-full bg-[#4FB8FF] hover:bg-[#4FB8FF]/90 text-white font-medium rounded-full">
-                      Sign Up Free
-                    </Button>
-                  </Link>
-                </div>
-              )}
+                </Link>
+                <Link to="/signup" onClick={() => setIsMenuOpen(false)}>
+                  <Button className="w-full bg-[#4FB8FF] hover:bg-[#4FB8FF]/90 text-white font-medium rounded-full">
+                    Sign Up Free
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}

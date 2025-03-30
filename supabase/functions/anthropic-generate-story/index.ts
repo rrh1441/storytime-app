@@ -1,7 +1,7 @@
 // supabase/functions/anthropic-generate-story/index.ts
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.39.0';
-import OpenAI from 'npm:openai@^4.0.0'; // Add OpenAI dependency
+import OpenAI from 'npm:openai@^4.0.0';
 // Import APIError types if needed for more specific error checking
 import { APIError as AnthropicAPIError } from 'npm:@anthropic-ai/sdk@0.39.0/error';
 import { APIError as OpenAIAPIError } from 'npm:openai@^4.0.0';
@@ -29,8 +29,9 @@ const TITLE_MARKER = "Generated Title: ";
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 1000;
 const BACKOFF_FACTOR = 2;
-const OPENAI_MODEL = "gpt-4o-mini"; // Using gpt-4o-mini as a modern, capable "mini" model
+const OPENAI_MODEL = "gpt-4o-mini";
 const ANTHROPIC_MODEL = "claude-3-5-sonnet-20240620";
+const DEFAULT_AGE_DESCRIPTION = "suitable for young children"; // Use a constant for default description
 
 console.log(`Anthropic/OpenAI Generate Story function initializing (Anthropic: ${anthropic ? 'Enabled' : 'Disabled'}, OpenAI: ${openai ? 'Enabled' : 'Disabled'})...`);
 
@@ -49,37 +50,45 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
   }
 
-  // Store final results
   let finalStoryContent: string | null = null;
   let finalTitle: string | null = null;
   let providerUsed: 'Anthropic' | 'OpenAI' | null = null;
 
   try {
     console.log("Handling POST request for story generation");
+    // --- MODIFIED: Removed ageRange from destructuring ---
     const {
-      storyTitle: userProvidedStoryTitle, // Rename to avoid conflict
-      ageRange = "4-8",
+      storyTitle: userProvidedStoryTitle,
       theme = "adventure",
       mainCharacter,
       educationalFocus,
       additionalInstructions
     } = await req.json();
+    // --- END MODIFICATION ---
 
-    if (!ageRange || !theme) {
-      throw new Error("Missing required parameters: ageRange and theme");
+    // --- MODIFIED: Removed ageRange validation ---
+    if (!theme) {
+      throw new Error("Missing required parameter: theme");
     }
+    // --- END MODIFICATION ---
+
+    // Log received parameters (ageRange is omitted)
+    console.log("Received parameters:", { userProvidedStoryTitle, theme, mainCharacter, educationalFocus });
 
     // --- Shared Prompt Details ---
     const characterDesc = mainCharacter ? ` The main character is named ${mainCharacter}.` : " The story features a child protagonist.";
     const lengthGuidance = 'around 350-450 words (approx 2.5-3 minutes reading time)';
-    const maxOutputTokens = 600; // Shared token limit (adjust per provider if necessary)
+    const maxOutputTokens = 600;
     const eduFocus = educationalFocus ? ` The story should subtly incorporate the theme of ${educationalFocus}.` : "";
     const addInstructions = additionalInstructions ? ` Additional user requests: ${additionalInstructions}` : "";
-    const basePromptInstructions = `Write a children's story suitable for the age range ${ageRange}.
+
+    // --- MODIFIED Prompt (uses DEFAULT_AGE_DESCRIPTION) ---
+    const basePromptInstructions = `Write a children's story ${DEFAULT_AGE_DESCRIPTION}.
 The story should have a theme of ${theme}.${characterDesc}
 The story should be engaging and age-appropriate, ${lengthGuidance}.${eduFocus}${addInstructions}
 Ensure the narrative is positive and concludes nicely. Structure the output in Markdown format, using paragraphs.
 Do not include any conversational introduction or conclusion like 'Here is the story...' or 'I hope you enjoyed this story!'. Start the response directly with the story content.`;
+    // --- END MODIFIED Prompt ---
 
     const shouldGenerateTitle = !(userProvidedStoryTitle && userProvidedStoryTitle.trim() !== "");
     const titleInstruction = shouldGenerateTitle
@@ -99,89 +108,64 @@ Do not include any conversational introduction or conclusion like 'Here is the s
         try {
           const anthropicPrompt = basePromptInstructions + titleInstruction;
           console.log(`Calling Anthropic model (${ANTHROPIC_MODEL}) with max_tokens: ${maxOutputTokens}. Retries left: ${retries}`);
-
-          const msg = await anthropic.messages.create({
-            model: ANTHROPIC_MODEL,
-            max_tokens: maxOutputTokens,
-            messages: [{ role: "user", content: anthropicPrompt }],
-          });
-
+          const msg = await anthropic.messages.create({ model: ANTHROPIC_MODEL, max_tokens: maxOutputTokens, messages: [{ role: "user", content: anthropicPrompt }], });
           console.log("Anthropic API call successful.");
           const rawContent = msg.content[0]?.type === 'text' ? msg.content[0].text : null;
           if (!rawContent) throw new Error('Anthropic response content was empty or not text.');
-
-          // Process result immediately if successful
-          const parsed = parseProviderResponse(rawContent, userProvidedStoryTitle, theme, ageRange);
+          // MODIFIED: Pass DEFAULT_AGE_DESCRIPTION to parser
+          const parsed = parseProviderResponse(rawContent, userProvidedStoryTitle, theme, DEFAULT_AGE_DESCRIPTION);
           finalStoryContent = parsed.story;
           finalTitle = parsed.title;
           providerUsed = 'Anthropic';
           anthropicSuccess = true;
-          break; // Exit retry loop on success
-
+          break;
         } catch (error) {
-          lastAnthropicError = error;
-          const status = (error as any)?.status; // Use type assertion cautiously
-          console.warn(`Anthropic API call failed. Status: ${status}, Retries left: ${retries - 1}`);
-          // Retry on specific transient errors
-          if ((status === 529 || status === 429 || status >= 500) && retries > 1) {
-            console.log(`Retrying Anthropic after ${delay}ms...`);
-            await sleep(delay);
-            delay *= BACKOFF_FACTOR;
-            retries--;
-          } else {
-            // Non-retryable error or retries exhausted
-            console.error("Anthropic failed permanently or error not retryable.");
-            break; // Exit loop, fallback will be attempted
-          }
-        }
-      }
+            lastAnthropicError = error;
+            const status = (error as any)?.status;
+            console.warn(`Anthropic API call failed. Status: ${status}, Retries left: ${retries - 1}`);
+            if ((status === 529 || status === 429 || status >= 500) && retries > 1) {
+                console.log(`Retrying Anthropic after ${delay}ms...`);
+                await sleep(delay);
+                delay *= BACKOFF_FACTOR;
+                retries--;
+            } else {
+                console.error("Anthropic failed permanently or error not retryable.");
+                break;
+            }
+        } // end catch
+      } // end while
     } else {
-      console.log("Anthropic client not available, skipping.");
+        console.log("Anthropic client not available, skipping.");
     }
 
     // --- Attempt 2: OpenAI Fallback (with Retries) ---
     let openaiSuccess = false;
     let lastOpenAIError: any = null;
 
-    if (!anthropicSuccess && openai) { // Only try OpenAI if Anthropic failed AND OpenAI client exists
+    if (!anthropicSuccess && openai) {
       console.log("Anthropic failed, attempting fallback with OpenAI...");
       let retries = MAX_RETRIES;
       let delay = INITIAL_DELAY_MS;
 
       while (retries > 0) {
         try {
-           // Construct prompt for OpenAI Chat Completion
-           const openAIPrompt = basePromptInstructions + titleInstruction; // Can reuse most instructions
+           const openAIPrompt = basePromptInstructions + titleInstruction;
            console.log(`Calling OpenAI model (${OPENAI_MODEL}) with max_tokens: ${maxOutputTokens}. Retries left: ${retries}`);
-
-           const completion = await openai.chat.completions.create({
-                model: OPENAI_MODEL,
-                messages: [
-                    // Optional: Add a system message if desired
-                    // { role: "system", content: "You are a creative children's story writer." },
-                    { role: "user", content: openAIPrompt }
-                ],
-                max_tokens: maxOutputTokens,
-                // temperature: 0.7, // Adjust creativity if needed
-           });
-
+           const completion = await openai.chat.completions.create({ model: OPENAI_MODEL, messages: [ { role: "user", content: openAIPrompt } ], max_tokens: maxOutputTokens });
            console.log("OpenAI API call successful.");
            const rawContent = completion.choices[0]?.message?.content;
            if (!rawContent) throw new Error('OpenAI response content was empty.');
-
-           // Process result immediately if successful
-           const parsed = parseProviderResponse(rawContent, userProvidedStoryTitle, theme, ageRange);
+           // MODIFIED: Pass DEFAULT_AGE_DESCRIPTION to parser
+           const parsed = parseProviderResponse(rawContent, userProvidedStoryTitle, theme, DEFAULT_AGE_DESCRIPTION);
            finalStoryContent = parsed.story;
            finalTitle = parsed.title;
            providerUsed = 'OpenAI';
            openaiSuccess = true;
-           break; // Exit retry loop on success
-
+           break;
         } catch (error) {
             lastOpenAIError = error;
             const status = (error as any)?.status;
             console.warn(`OpenAI API call failed. Status: ${status}, Retries left: ${retries - 1}`);
-             // Retry on specific transient errors (429: rate limit, 5xx: server errors)
             if ((status === 429 || status >= 500) && retries > 1) {
                 console.log(`Retrying OpenAI after ${delay}ms...`);
                 await sleep(delay);
@@ -189,10 +173,10 @@ Do not include any conversational introduction or conclusion like 'Here is the s
                 retries--;
             } else {
                 console.error("OpenAI failed permanently or error not retryable.");
-                break; // Exit loop
+                break;
             }
-        }
-      }
+        } // end catch
+      } // end while
     } else if (!anthropicSuccess) {
         console.log("Anthropic failed and OpenAI client not available, cannot fallback.");
     }
@@ -205,12 +189,9 @@ Do not include any conversational introduction or conclusion like 'Here is the s
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       );
     } else {
-      // If we reach here, both providers failed or were unavailable
       console.error("Failed to generate story using both Anthropic and OpenAI.");
-      // Log the specific errors if they exist
       if (lastAnthropicError) console.error("Last Anthropic Error:", lastAnthropicError);
       if (lastOpenAIError) console.error("Last OpenAI Error:", lastOpenAIError);
-      // Throw an error that will be caught by the outer catch block
       throw new Error("Both AI providers failed after retries.");
     }
 
@@ -218,36 +199,21 @@ Do not include any conversational introduction or conclusion like 'Here is the s
     // --- User-Friendly Final Error Handling ---
     console.error("Detailed Error in Story Generation Function:", error);
     let userErrorMessage = "We're having trouble generating the story right now, possibly due to high demand on our AI partners' servers. Please try again in a few moments.";
-
-    // Optionally add more specific context if known (e.g., if keys were missing)
-    if (!anthropicApiKey && !openaiApiKey) {
-        userErrorMessage = "AI story generation is currently unavailable due to configuration issues. Please contact support.";
-    } else if (error instanceof Error && error.message === "Both AI providers failed after retries.") {
-         // Keep the general "high demand" message for this case
-         userErrorMessage = "We're having trouble generating the story right now, possibly due to high demand on our AI partners' servers (Anthropic/OpenAI). Please try again in a few moments.";
-    } else if (error instanceof Error) {
-        // For other specific errors caught during setup (like missing params)
-        userErrorMessage = `Failed to start story generation: ${error.message}`;
-    }
-
+    if (!anthropicApiKey && !openaiApiKey) { userErrorMessage = "AI story generation is currently unavailable due to configuration issues. Please contact support."; }
+    else if (error instanceof Error && error.message === "Both AI providers failed after retries.") { userErrorMessage = "We're having trouble generating the story right now, possibly due to high demand on our AI partners' servers (Anthropic/OpenAI). Please try again in a few moments."; }
+    else if (error instanceof Error) { userErrorMessage = `Failed to start story generation: ${error.message}`; }
     console.error("Final error message sent to user:", userErrorMessage);
-
-    return new Response(
-      JSON.stringify({ error: userErrorMessage }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500, // Internal Server Error
-      }
-    );
+    return new Response( JSON.stringify({ error: userErrorMessage }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 } );
   }
 });
 
 // --- Helper function to parse response content ---
+// MODIFIED: ageRange parameter changed to ageDescription for fallback title
 function parseProviderResponse(
     rawContent: string,
     userProvidedTitle: string | null | undefined,
     theme: string,
-    ageRange: string
+    ageDescription: string // Changed from ageRange
 ): { story: string; title: string } {
     let story = rawContent.trim();
     let title = (userProvidedTitle && userProvidedTitle.trim() !== "") ? userProvidedTitle.trim() : "";
@@ -260,20 +226,15 @@ function parseProviderResponse(
                  title = extractedTitle;
                  story = story.substring(0, titleMarkerIndex).trim();
                  console.log(`Parsed generated title: "${title}"`);
-            } else {
-                 console.warn("Found title marker but extracted title was empty during parsing.");
-            }
-        } else {
-             console.warn("Title marker not found in response during parsing.");
-        }
+            } else { console.warn("Found title marker but extracted title was empty during parsing."); }
+        } else { console.warn("Title marker not found in response during parsing."); }
     }
-
     // Fallback title if still empty after parsing
     if (!title || title.trim() === "") {
         console.log("No valid title parsed or provided. Creating fallback title.");
-        title = `A ${theme} story for ages ${ageRange}`;
+        // MODIFIED: Use ageDescription in fallback
+        title = `A ${theme} story ${ageDescription}`;
     }
-
     return { story, title };
 }
 // ---

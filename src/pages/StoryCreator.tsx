@@ -19,7 +19,7 @@ import { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sparkles, BookOpen, Edit, Headphones, RotateCw, Save, Play, Pause,
-  PenTool, Loader2, AlertCircle, LogIn, Download, Share2, MicVocal, ServerCrash, Volume2, Copy, CheckCircle // Added CheckCircle
+  PenTool, Loader2, AlertCircle, LogIn, Download, Share2, MicVocal, ServerCrash, Volume2, Copy, CheckCircle
 } from 'lucide-react';
 import { Database, TablesInsert } from '@/integrations/supabase/types';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -34,15 +34,16 @@ interface ElevenLabsVoice {
   preview_url?: string | null;
 }
 
-// Zod Schema (storyLength REMOVED)
+// --- UPDATED Zod Schema (ageRange REMOVED) ---
 const storyParamsSchema = z.object({
   storyTitle: z.string().max(150, "Title too long").optional().nullable(),
-  ageRange: z.string().min(1, "Age range is required."),
+  // ageRange: z.string().min(1, "Age range is required."), // REMOVED
   theme: z.string().min(1, "Theme is required."),
   mainCharacter: z.string().max(50).optional().nullable(),
   educationalFocus: z.string().optional().nullable(),
   additionalInstructions: z.string().max(500).optional().nullable(),
 });
+// --- END UPDATED Schema ---
 
 type StoryParamsFormValues = z.infer<typeof storyParamsSchema>;
 type StoryInsertData = TablesInsert<'stories'>;
@@ -86,18 +87,20 @@ const StoryCreator: React.FC = () => {
 
   const form = useForm<StoryParamsFormValues>({
     resolver: zodResolver(storyParamsSchema),
+    // --- UPDATED defaultValues (ageRange REMOVED) ---
     defaultValues: {
       storyTitle: "",
-      ageRange: "4-8",
+      // ageRange: "4-8", // REMOVED
       theme: "adventure",
       mainCharacter: "",
       educationalFocus: null,
       additionalInstructions: "",
     },
+    // --- END UPDATED defaultValues ---
   });
 
   // Fetch ElevenLabs Voices
-  const { data: voiceData, isLoading: isLoadingVoices, isError: isVoiceError } = useQuery<{ voices: ElevenLabsVoice[] }, Error>({ // Removed unused error variable
+  const { data: voiceData, isLoading: isLoadingVoices, isError: isVoiceError } = useQuery<{ voices: ElevenLabsVoice[] }, Error>({
       queryKey: ['elevenlabs-voices'],
       queryFn: async () => {
           console.log("Fetching ElevenLabs voices via Edge Function...");
@@ -115,25 +118,26 @@ const StoryCreator: React.FC = () => {
     // Story Generation Mutation
     const generateStoryMutation = useMutation({
       mutationFn: async (params: { formData: StoryParamsFormValues, isAnonymous: boolean }): Promise<{ story: string, title: string, isAnonymous: boolean }> => {
+        // formData no longer contains ageRange
         const { data, error } = await supabase.functions.invoke('anthropic-generate-story', { body: params.formData });
         if (error) throw new Error(`Edge Function Error: ${error.message}`);
         if (data?.error) throw new Error(`Generation Error: ${data.error}`);
         if (!data?.story || typeof data.title === 'undefined') throw new Error("Invalid response received from generation function (missing story or title).");
         return { story: data.story as string, title: data.title as string, isAnonymous: params.isAnonymous };
       },
-      onSuccess: ({ story, title: returnedTitle }) => { // Removed unused isAnonymous
-        setStoryContent(story);
-        setGeneratedStoryId(null);
-        setGeneratedAudioUrl(null);
-        setSelectedVoiceId(undefined);
-        const currentFormTitle = form.getValues('storyTitle');
-        if (returnedTitle && (!currentFormTitle || currentFormTitle.trim() === '')) {
-          form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
-          toast({ title: "Story & Title Generated!", description: "Review the story text below. The title is the first line." });
-        } else {
-          toast({ title: "Story Generated!", description: "Review the story text below. The title is the first line." });
-        }
-        setActiveTab("edit");
+      onSuccess: ({ story, title: returnedTitle }) => {
+         setStoryContent(story);
+         setGeneratedStoryId(null);
+         setGeneratedAudioUrl(null);
+         setSelectedVoiceId(undefined);
+         const currentFormTitle = form.getValues('storyTitle');
+         if (returnedTitle && (!currentFormTitle || currentFormTitle.trim() === '')) {
+           form.setValue('storyTitle', returnedTitle, { shouldValidate: true });
+           toast({ title: "Story & Title Generated!", description: "Review the story text below. The title is the first line." });
+         } else {
+           toast({ title: "Story Generated!", description: "Review the story text below. The title is the first line." });
+         }
+         setActiveTab("edit");
       },
       onError: (error: Error) => {
          toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
@@ -166,14 +170,19 @@ const StoryCreator: React.FC = () => {
       mutationFn: async (storyData: StoryInsertData) => {
         if (!user?.id) throw new Error("User not logged in.");
         const educationalElements = storyData.educationalFocus ? [storyData.educationalFocus] : null;
+        // ageRange is correctly omitted as it's not in StoryInsertData type or form values
         const dataToSave: StoryInsertData = {
             ...storyData,
             user_id: user.id,
             content: storyContent,
             title: storyData.title || "Untitled Story",
-            educational_elements: educationalElements
+            educational_elements: educationalElements,
+            // age_range: storyData.age_range, // This field is now removed
         };
         delete (dataToSave as any).educationalFocus;
+        // Remove age_range specifically if it somehow sneaked in (shouldn't happen with TS)
+        delete (dataToSave as any).age_range;
+
         const { data, error } = await supabase
             .from('stories')
             .upsert(dataToSave)
@@ -195,6 +204,7 @@ const StoryCreator: React.FC = () => {
     // Generate Submit Handler
     const onGenerateSubmit: SubmitHandler<StoryParamsFormValues> = (formData) => {
       const isAnonymous = !user;
+      // formData no longer contains ageRange
       generateStoryMutation.mutate({ formData, isAnonymous });
     };
 
@@ -205,12 +215,7 @@ const StoryCreator: React.FC = () => {
               title: "Login Required",
               description: "Please log in or sign up to save stories.",
               variant: "destructive",
-              action: (
-                  <>
-                      <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button>
-                      <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button>
-                  </>
-              )
+              action: ( <> <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} size="sm">Login</Button> <Button onClick={() => navigate('/signup', { state: { from: location }, replace: true })} size="sm" variant="outline">Sign Up</Button> </> )
           });
           return;
       }
@@ -221,18 +226,16 @@ const StoryCreator: React.FC = () => {
       const currentFormValues = form.getValues();
       const firstLineBreak = storyContent.indexOf('\n');
       const potentialTitleFromContent = (firstLineBreak === -1 ? storyContent : storyContent.substring(0, firstLineBreak)).trim();
-      // Use title from content first, then form value (potentially AI generated), then fallback
       const titleToSave = potentialTitleFromContent || currentFormValues.storyTitle || "Untitled Story";
-
-      // Update form state just before saving (doesn't affect UI in edit tab anymore)
       form.setValue('storyTitle', titleToSave, { shouldValidate: false });
 
+      // ageRange is correctly omitted here
       const storyDataToSave: Partial<StoryInsertData> & { educationalFocus?: string | null } = {
         id: generatedStoryId || undefined,
         user_id: user.id,
         title: titleToSave,
         content: storyContent,
-        age_range: currentFormValues.ageRange,
+        // age_range: currentFormValues.ageRange, // REMOVED
         themes: currentFormValues.theme ? [currentFormValues.theme] : null,
         educationalFocus: currentFormValues.educationalFocus || null,
       };
@@ -297,9 +300,9 @@ const StoryCreator: React.FC = () => {
             URL.revokeObjectURL(objectUrl);
             toast({ title: "Download Started", description: `Saved as ${fileName}` });
         } catch (error: any) {
-            console.error("Download failed:", error);
-            toast({ title: "Download Failed", description: error.message, variant: "destructive" });
-         }
+             console.error("Download failed:", error);
+             toast({ title: "Download Failed", description: error.message, variant: "destructive" });
+        }
         finally { setIsDownloading(false); }
     };
 
@@ -312,7 +315,6 @@ const StoryCreator: React.FC = () => {
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
         <h1 className="text-3xl font-bold mb-4 font-display text-gray-700">Story Creator Studio</h1>
-         {/* --- FIXED: Free gen warning Alert --- */}
         {!user && freeGenUsed && (
           <Alert variant="destructive" className="mb-6 animate-fade-in">
             <AlertCircle className="h-4 w-4" />
@@ -322,11 +324,9 @@ const StoryCreator: React.FC = () => {
             </AlertDescription>
           </Alert>
         )}
-        {/* --- END FIX --- */}
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-               {/* Changed grid-cols-4 back, added Share trigger */}
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="parameters" className="flex items-center gap-2"><PenTool className="h-4 w-4" /><span>Story Outline</span></TabsTrigger>
                 <TabsTrigger value="edit" disabled={!storyContent} className="flex items-center gap-2"><Edit className="h-4 w-4" /><span>Edit / Preview</span></TabsTrigger>
@@ -339,12 +339,12 @@ const StoryCreator: React.FC = () => {
                  <Card>
                     <CardHeader>
                         <CardTitle>Story Outline</CardTitle>
-                        <CardDescription>Provide the details for the story (~3 min length).</CardDescription>
+                        {/* UPDATED Description */}
+                        <CardDescription>Provide the story details (story is generated for young children, ~3 min length).</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pt-6">
-                         {/* Fields: Title(Opt), AgeRange, Theme, MainCharacter(Opt), EduFocus(Opt), AddInstructions(Opt) */}
                          <FormField control={form.control} name="storyTitle" render={({ field }) => (<FormItem><FormLabel>Story Title <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Input placeholder="Enter a title (or leave blank for AI)" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
-                         <FormField control={form.control} name="ageRange" render={({ field }) => (<FormItem><FormLabel>Age Range</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select age" /></SelectTrigger></FormControl><SelectContent><SelectItem value="0-3">0-3</SelectItem><SelectItem value="4-6">4-6</SelectItem><SelectItem value="4-8">4-8</SelectItem><SelectItem value="9-12">9-12</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                         {/* --- Age Range Field REMOVED from UI --- */}
                          <FormField control={form.control} name="theme" render={({ field }) => (<FormItem><FormLabel>Theme</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger></FormControl><SelectContent><SelectItem value="adventure">Adventure</SelectItem><SelectItem value="fantasy">Fantasy</SelectItem><SelectItem value="animals">Animals</SelectItem><SelectItem value="friendship">Friendship</SelectItem><SelectItem value="space">Space</SelectItem><SelectItem value="ocean">Ocean</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                          <FormField control={form.control} name="mainCharacter" render={({ field }) => (<FormItem><FormLabel>Main Character Name <span className="text-xs text-gray-500">(Optional)</span></FormLabel><FormControl><Input placeholder="E.g., Luna, Finn" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
                          <FormField control={form.control} name="educationalFocus" render={({ field }) => (<FormItem><FormLabel>Educational Focus <span className="text-xs text-gray-500">(Optional)</span></FormLabel><Select onValueChange={field.onChange} value={field.value ?? undefined}><FormControl><SelectTrigger><SelectValue placeholder="Select focus (optional)" /></SelectTrigger></FormControl><SelectContent><SelectItem value="kindness">Kindness</SelectItem><SelectItem value="courage">Courage</SelectItem><SelectItem value="curiosity">Curiosity</SelectItem><SelectItem value="perseverance">Perseverance</SelectItem><SelectItem value="teamwork">Teamwork</SelectItem><SelectItem value="patience">Patience</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
@@ -358,7 +358,7 @@ const StoryCreator: React.FC = () => {
                  </Card>
               </TabsContent>
 
-              {/* Edit / Preview Tab Content (Title Field REMOVED) */}
+              {/* Edit / Preview Tab Content */}
               <TabsContent value="edit">
                  <Card>
                     <CardHeader>
@@ -399,7 +399,6 @@ const StoryCreator: React.FC = () => {
                             <Label htmlFor="voice-select">Choose a Voice</Label>
                             <div className="flex items-center gap-2">
                                 <div className="flex-grow">
-                                    {/* Voice Loading/Error/Select */}
                                     {isLoadingVoices && ( <div className="flex items-center space-x-2 text-muted-foreground h-10 px-3"><Loader2 className="h-4 w-4 animate-spin" /><span>Loading voices...</span></div> )}
                                     {isVoiceError && ( <Alert variant="destructive" className="flex items-center h-10"><ServerCrash className="h-4 w-4 mr-2"/><AlertDescription>Could not load voices.</AlertDescription></Alert> )}
                                     {!isLoadingVoices && !isVoiceError && voiceData?.voices && ( <Select value={selectedVoiceId} onValueChange={(value) => { previewAudioRef.current?.pause(); setIsPreviewPlaying(false); setSelectedVoiceId(value); setGeneratedAudioUrl(null); }}> <SelectTrigger id="voice-select"><SelectValue placeholder="Select a voice..." /></SelectTrigger> <SelectContent>{voiceData.voices.map(voice => ( <SelectItem key={voice.voice_id} value={voice.voice_id}>{voice.name} {voice.labels?.accent ? `(${capitalizeFirstLetter(voice.labels.accent)})` : ''} {voice.category === 'professional' ? '(Pro)' : ''}</SelectItem> ))}</SelectContent> </Select> )}
@@ -412,14 +411,12 @@ const StoryCreator: React.FC = () => {
                             {selectedVoiceId && !isLoadingVoices && !isVoiceError && !selectedVoiceDetails?.preview_url && (<p className='text-xs text-destructive pt-1'>Preview not available.</p>)}
                         </div>
 
-                        {/* Generate Narration Button (with time estimate) */}
-                        <Button type="button" onClick={handleGenerateNarration} disabled={!storyContent || !selectedVoiceId || generateAudioMutation.isPending || isLoadingVoices || isVoiceError} className='w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white'>
+                        {/* Generate Narration Button */}
+                         <Button type="button" onClick={handleGenerateNarration} disabled={!storyContent || !selectedVoiceId || generateAudioMutation.isPending || isLoadingVoices || isVoiceError} className='w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white'>
                             {generateAudioMutation.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating Audio... (est. 15-60s)</>) : (<><MicVocal className="mr-2 h-4 w-4" /> Generate Narration</>)}
                         </Button>
-
                         {/* Audio Generation Error Display */}
                         {generateAudioMutation.isError && (<Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Audio Generation Error</AlertTitle><AlertDescription>{generateAudioMutation.error.message}</AlertDescription></Alert>)}
-
                         {/* Audio Player & Action Buttons */}
                         {generatedAudioUrl && !generateAudioMutation.isPending && (
                             <div className="space-y-4 pt-4 border-t">
@@ -433,13 +430,11 @@ const StoryCreator: React.FC = () => {
                                     {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     {isDownloading ? 'Preparing...' : 'Download MP3'}
                                 </Button>
-                                {/* Save Button uses handleSaveStory */}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                     <span className="w-full" tabIndex={!user ? 0 : undefined}>
                                         <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full bg-storytime-green hover:bg-storytime-green/90">
                                             {saveStoryMutation.isPending ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : (<Save className="mr-2 h-4 w-4" />)}
-                                            {/* Change button text based on whether story exists */}
                                             {generatedStoryId ? 'Update Story' : 'Save to Library'}
                                         </Button>
                                     </span>
@@ -450,22 +445,15 @@ const StoryCreator: React.FC = () => {
                             </div>
                         )}
                     </CardContent>
-                    {/* Footer with Next button */}
                     <CardFooter className="flex justify-end">
-                        <Button
-                            type="button"
-                            onClick={() => setActiveTab('share')}
-                            // Enable Share tab only after saving and audio generation
-                            disabled={!generatedStoryId || !generatedAudioUrl}
-                            className="bg-storytime-orange hover:bg-storytime-orange/90 text-white"
-                        >
+                        <Button type="button" onClick={() => setActiveTab('share')} disabled={!generatedStoryId || !generatedAudioUrl} className="bg-storytime-orange hover:bg-storytime-orange/90 text-white">
                             Next: Share Story <Share2 className="ml-2 h-4 w-4" />
                         </Button>
                     </CardFooter>
                  </Card>
               </TabsContent>
 
-              {/* ADDED: Share Tab Content */}
+              {/* Share Tab Content */}
                <TabsContent value="share">
                  <Card>
                   <CardHeader>
@@ -473,37 +461,19 @@ const StoryCreator: React.FC = () => {
                     <CardDescription>Your story is ready! Share it or listen in the reading room.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4 pt-6 text-center">
-                     {/* Check if story is saved AND audio exists */}
                      {generatedStoryId && generatedAudioUrl ? (
                          <div className='space-y-4'>
-                            <p className='text-green-600 font-medium'>
-                                <CheckCircle className="inline-block mr-2 h-5 w-5" />
-                                Story saved and audio generated!
-                            </p>
+                            <p className='text-green-600 font-medium'> <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved and audio generated! </p>
                             <div className='flex flex-col sm:flex-row gap-4 justify-center'>
-                                {generatedStoryId && (
-                                    <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer">
-                                        <Button className="w-full sm:w-auto bg-storytime-green hover:bg-storytime-green/90">
-                                            <BookOpen className="mr-2 h-4 w-4"/> Open Reading Room
-                                        </Button>
-                                    </Link>
-                                )}
-                                {generatedAudioUrl && (
-                                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}>
-                                        <Copy className="mr-2 h-4 w-4"/> Copy Sharable Audio Link
-                                    </Button>
-                                )}
+                                {generatedStoryId && ( <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer"> <Button className="w-full sm:w-auto bg-storytime-green hover:bg-storytime-green/90"> <BookOpen className="mr-2 h-4 w-4"/> Open Reading Room </Button> </Link> )}
+                                {generatedAudioUrl && ( <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}> <Copy className="mr-2 h-4 w-4"/> Copy Sharable Audio Link </Button> )}
                             </div>
                          </div>
                      ) : (
-                          <p className='text-muted-foreground italic py-8'>
-                            Please save your story and generate audio first (on the 'Voice & Audio' tab).
-                          </p>
+                          <p className='text-muted-foreground italic py-8'> Please save your story and generate audio first (on the 'Voice & Audio' tab). </p>
                      )}
                   </CardContent>
-                 <CardFooter className='flex justify-center'>
-                     {/* Optional: Add more sharing buttons later (e.g., social media) */}
-                 </CardFooter>
+                 <CardFooter className='flex justify-center'></CardFooter>
                 </Card>
               </TabsContent>
 

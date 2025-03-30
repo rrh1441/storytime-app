@@ -1,6 +1,6 @@
 // src/components/layout/Footer.tsx
 import { Link } from 'react-router-dom';
-import { BookOpen, Mail } from "lucide-react"; // Removed unused social icons
+import { BookOpen, Mail } from "lucide-react"; // Only import needed icons
 
 const Footer = () => {
   return (
@@ -16,13 +16,7 @@ const Footer = () => {
             <p className="text-[#6b7280] mb-4 text-sm">
               Create magical, personalized children's stories with AI assistance and bring them to life with your own voice.
             </p>
-            {/* --- Social Links REMOVED --- */}
-            {/* <div className="flex space-x-4">
-                 <a href="#" aria-label="Twitter" className="text-gray-400 hover:text-[#8A4FFF] transition-colors"> <Twitter className="h-5 w-5" /> </a>
-                 <a href="#" aria-label="Facebook" className="text-gray-400 hover:text-[#8A4FFF] transition-colors"> <Facebook className="h-5 w-5" /> </a>
-                 <a href="#" aria-label="Instagram" className="text-gray-400 hover:text-[#8A4FFF] transition-colors"> <Instagram className="h-5 w-5" /> </a>
-            </div> */}
-            {/* --- END REMOVAL --- */}
+            {/* Social Links DIV is removed */}
           </div>
 
           {/* Product Links Column */}
@@ -37,15 +31,19 @@ const Footer = () => {
           </div>
         </div>
 
-        {/* Bottom Copyright/Links Section */}
+        {/* Bottom Copyright Section */}
         <div className="border-t border-[#06D6A0]/20 pt-8">
           <p className="text-[#6b7280] text-sm text-center">
             &copy; {new Date().getFullYear()} StoryTime. All rights reserved. Made with Magic ✨.
           </p>
+          {/* --- Privacy and Terms Links REMOVED --- */}
+          {/*
           <div className="flex justify-center mt-4 space-x-6">
             <Link to="/privacy" className="text-xs text-[#6b7280] hover:text-[#8A4FFF] transition-colors"> Privacy Policy </Link>
             <Link to="/terms" className="text-xs text-[#6b7280] hover:text-[#8A4FFF] transition-colors"> Terms of Service </Link>
           </div>
+           */}
+           {/* --- END REMOVAL --- */}
         </div>
       </div>
     </footer>

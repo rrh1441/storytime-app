@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { BookOpen, Menu, X } from "lucide-react"; // Removed User icon for now
-import { useAuth } from '@/context/AuthContext'; // Import useAuth
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { BookOpen, Menu, X } from "lucide-react"; 
+import { useAuth } from '@/context/AuthContext'; 
+import { Skeleton } from '@/components/ui/skeleton'; 
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -21,22 +21,19 @@ const Navbar = () => {
   };
 
   return (
-    // Added sticky positioning and higher z-index
     <nav className="py-4 px-6 md:px-8 bg-white shadow-sm sticky top-0 z-40">
       <div className="container mx-auto flex justify-between items-center">
         <Link to="/" className="flex items-center space-x-2">
-          {/* Using Ghibli-esque colors from your Home page for consistency */}
           <BookOpen className="h-8 w-8 text-[#8A4FFF]" />
           <span className="text-2xl font-display font-bold text-[#4FB8FF]">StoryTime</span>
         </Link>
 
-        {/* Desktop Menu - Updated Links and Auth State */}
+        {/* Desktop Menu */}
         <div className="hidden md:flex items-center space-x-8">
-          <a href="/#how-it-works" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors"> {/* Use anchor link */}
+          <a href="/#how-it-works" className="font-medium text-gray-600 hover:text-[#8A4FFF] transition-colors">
             How It Works
           </a>
-          {/* Removed Stories link */}
-          {/* Conditionally show Dashboard/Auth buttons */}
+          
           {loading ? (
             <div className='flex items-center space-x-3'>
                 <Skeleton className='h-9 w-24 rounded-full' />
@@ -80,18 +77,18 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile Menu - Updated Links and Auth State */}
+      {/* Mobile Menu */}
       {isMenuOpen && (
-         <div className="fixed inset-0 top-[69px] z-30 bg-white/95 backdrop-blur-sm md:hidden animate-fade-in"> {/* Adjusted top */}
+         <div className="fixed inset-0 top-[69px] z-30 bg-white/95 backdrop-blur-sm md:hidden animate-fade-in">
           <div className="flex flex-col p-8 space-y-6">
             <a
-              href="/#how-it-works" // Use anchor link
+              href="/#how-it-works"
               className="text-xl font-medium text-gray-700 hover:text-[#8A4FFF]"
               onClick={() => setIsMenuOpen(false)}
             >
               How It Works
             </a>
-            {/* Removed Stories link */}
+            
              {loading ? (
                 <div className="pt-4 space-y-4">
                     <Skeleton className='h-10 w-full rounded-full' />

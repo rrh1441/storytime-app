@@ -160,6 +160,8 @@ const StoryCreator: React.FC = () => {
         },
         onSuccess: ({ audioUrl }) => {
             setGeneratedAudioUrl(audioUrl);
+            // Automatically move to share tab once audio is generated
+            setActiveTab("share");
         },
     });
 
@@ -350,7 +352,7 @@ const StoryCreator: React.FC = () => {
               {/* Voice & Audio Tab Content */}
               <TabsContent value="voice">
                  <Card>
-                   <CardHeader><CardTitle>Add Narration</CardTitle><CardDescription>Select a voice, preview it, generate audio, and save your story.</CardDescription></CardHeader>
+                   <CardHeader><CardTitle>Add Narration</CardTitle><CardDescription>Select a voice, preview it, and generate audio for your story.</CardDescription></CardHeader>
                    <CardContent className="space-y-6">
                      {/* Voice Selection */}
                      <div className='space-y-2'>
@@ -370,56 +372,68 @@ const StoryCreator: React.FC = () => {
                       <Button type="button" onClick={handleGenerateNarration} disabled={!storyContent || !selectedVoiceId || generateAudioMutation.isPending || isLoadingVoices || isVoiceError} className='w-full bg-storytime-blue hover:bg-storytime-blue/90 text-white'> {generateAudioMutation.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating Audio... (est. 15-60s)</>) : (<><MicVocal className="mr-2 h-4 w-4" /> Generate Narration</>)} </Button>
                      {/* Audio Generation Error Display */}
                      {generateAudioMutation.isError && (<Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Audio Generation Error</AlertTitle><AlertDescription>{generateAudioMutation.error.message}</AlertDescription></Alert>)}
-                     {/* Audio Player & Save Your Story Section */}
-                     {generatedAudioUrl && !generateAudioMutation.isPending && (
-                       <div className="space-y-4 pt-4 border-t">
-                         <h4 className='font-medium'>Save Your Story</h4>
-                         <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
-                         <div className="grid grid-cols-1 gap-3">
-                           <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="bg-storytime-green hover:bg-storytime-green/90 text-white w-full">
-                             {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                             Save to Library{user ? '' : ' (Requires Login)'}
-                           </Button>
-                           
-                           <Button type="button" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl)
-                                .then(() => toast({ title: "Audio Link Copied!"}))}} className="w-full">
-                             <Share2 className="mr-2 h-4 w-4" /> Share
-                           </Button>
-                           
-                           <Button type="button" onClick={handleDownloadAudio} disabled={isDownloading} className="w-full">
-                             {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                             Download
-                           </Button>
-                           
-                           <Button type="button" className="w-full">
-                             <Volume2 className="mr-2 h-4 w-4" /> Listen
-                           </Button>
-                         </div>
-                         
-                         {!user && (
-                           <div className="text-center mt-4">
-                             <p className="text-sm text-muted-foreground mb-2">You need to be logged in to save your story.</p>
-                             <div className="flex justify-center space-x-2">
-                               <Link to="/login"><Button variant="outline" size="sm">Log In</Button></Link>
-                               <Link to="/signup"><Button size="sm">Sign Up</Button></Link>
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     )}
                    </CardContent>
-                   <CardFooter className="flex justify-end"> <Button type="button" onClick={() => setActiveTab('share')} disabled={!generatedStoryId || !generatedAudioUrl} className="bg-storytime-orange hover:bg-storytime-orange/90 text-white"> Next: Share Story <Share2 className="ml-2 h-4 w-4" /> </Button> </CardFooter>
                  </Card>
               </TabsContent>
 
               {/* Share Tab Content */}
                <TabsContent value="share">
                  <Card>
-                   <CardHeader> <CardTitle>Share Your Story</CardTitle> <CardDescription>Your story is ready! Share it or listen in the reading room.</CardDescription> </CardHeader>
-                   <CardContent className="space-y-4 pt-6 text-center">
-                    {generatedStoryId && generatedAudioUrl ? ( <div className='space-y-4'> <p className='text-green-600 font-medium'> <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved and audio generated! </p> <div className='flex flex-col sm:flex-row gap-4 justify-center'> {generatedStoryId && ( <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer"> <Button className="w-full sm:w-auto bg-storytime-green hover:bg-storytime-green/90"> <BookOpen className="mr-2 h-4 w-4"/> Open Reading Room </Button> </Link> )} {generatedAudioUrl && ( <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigator.clipboard.writeText(generatedAudioUrl).then(() => toast({ title: "Audio Link Copied!"}))}> <Copy className="mr-2 h-4 w-4"/> Copy Sharable Audio Link </Button> )} </div> </div> ) : ( <p className='text-muted-foreground italic py-8'> Please save your story and generate audio first (on the 'Voice & Audio' tab). </p> )}
+                   <CardHeader> <CardTitle>Save Your Story</CardTitle> <CardDescription>Your audio is ready! Use the options below to save and share your story.</CardDescription> </CardHeader>
+                   <CardContent className="space-y-6 pt-6">
+                    {generatedAudioUrl ? (
+                      <div className="space-y-4">
+                        <audio controls src={generatedAudioUrl} className="w-full">Your browser does not support the audio element.</audio>
+                        <div className="grid grid-cols-1 gap-3">
+                          <Button type="button" className="w-full">
+                            <Volume2 className="mr-2 h-4 w-4" /> Listen
+                          </Button>
+                          
+                          <Button type="button" onClick={() => { generatedAudioUrl && navigator.clipboard.writeText(generatedAudioUrl)
+                               .then(() => toast({ title: "Audio Link Copied!"}))}} className="w-full">
+                            <Share2 className="mr-2 h-4 w-4" /> Share
+                          </Button>
+                          
+                          <Button type="button" onClick={handleDownloadAudio} disabled={isDownloading} className="w-full">
+                            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Download
+                          </Button>
+                          
+                          <Button type="button" onClick={handleSaveStory} disabled={!user || saveStoryMutation.isPending} className="w-full">
+                            {saveStoryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Save to Library{user ? '' : ' (Requires Login)'}
+                          </Button>
+                        </div>
+                        
+                        {!user && (
+                          <div className="text-center mt-4">
+                            <p className="text-sm text-muted-foreground mb-2">You need to be logged in to save your story.</p>
+                            <div className="flex justify-center space-x-2">
+                              <Link to="/login"><Button variant="outline" size="sm">Log In</Button></Link>
+                              <Link to="/signup"><Button size="sm">Sign Up</Button></Link>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {generatedStoryId && (
+                          <div className="mt-6 text-center">
+                            <p className="text-green-600 font-medium mb-4">
+                              <CheckCircle className="inline-block mr-2 h-5 w-5" /> Story saved successfully!
+                            </p>
+                            <Link to={`/story/${generatedStoryId}/play`} target="_blank" rel="noopener noreferrer">
+                              <Button className="bg-storytime-green hover:bg-storytime-green/90">
+                                <BookOpen className="mr-2 h-4 w-4"/> Open in Reading Room
+                              </Button>
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className='text-muted-foreground italic py-8 text-center'>
+                        Please generate audio for your story first (in the 'Voice & Audio' tab).
+                      </p>
+                    )}
                    </CardContent>
-                   <CardFooter className='flex justify-center'></CardFooter>
                  </Card>
               </TabsContent>
 

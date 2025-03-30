@@ -2,31 +2,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-// Removed unused icons like BookOpen, Headphones, Users, BarChart, Mic
-import { Sparkles, Clock, Bird, Leaf, Cloud, PenTool, PlayCircle, PauseCircle } from 'lucide-react';
+// Corrected imports: Ensure Mic is present, Headphones is not needed here.
+import { Sparkles, Clock, Bird, Leaf, Cloud, PenTool, PlayCircle, PauseCircle, Mic } from 'lucide-react';
 
-// Updated featured stories data (Duration is still here but won't be displayed)
+// Featured stories data
 const featuredStories = [
   {
     id: 'cosmic',
     title: 'Cosmic Adventures',
     coverImage: '/Cosmic.png',
     audioSrc: '/Cosmic.mp3',
-    duration: '4 min', // We'll just not render this part
+    duration: '4 min',
   },
   {
     id: 'flying',
     title: 'The Flying Acorn Ship',
     coverImage: '/Flying.png',
     audioSrc: '/Flying.mp3',
-    duration: '6 min', // We'll just not render this part
+    duration: '6 min',
   },
   {
     id: 'whispers',
     title: 'The Whispers of the Windwood',
     coverImage: '/Whispers.png',
     audioSrc: '/Whispers.mp3',
-    duration: '5 min', // We'll just not render this part
+    duration: '5 min',
   }
 ];
 
@@ -89,13 +89,7 @@ const Home: React.FC = () => {
 
       {/* Hero Section */}
       <section className="relative pt-20 pb-24 md:pb-32 overflow-hidden">
-        {/* Floating elements */}
-        <div className="absolute top-10 md:top-20 left-5 md:left-20 animate-float opacity-70 z-0"> <Cloud className="h-16 w-16 md:h-20 md:w-20 text-[#D3E4FD]" /> </div>
-        <div className="absolute top-20 md:top-40 right-5 md:right-20 animate-bounce-slow opacity-60 z-0"> <Cloud className="h-12 w-12 md:h-16 md:w-16 text-[#D3E4FD]" /> </div>
-        <div className="absolute bottom-20 md:bottom-40 left-1/4 animate-bounce-slow opacity-50 z-0"> <Cloud className="h-16 w-16 md:h-24 md:w-24 text-[#D3E4FD]" /> </div>
-        <div className="absolute bottom-10 md:bottom-20 right-1/3 animate-float z-0"> <Leaf className="h-8 w-8 md:h-10 md:h-10 text-[#06D6A0] opacity-60" /> </div>
-        <div className="absolute top-32 md:top-48 left-1/3 animate-float z-0"> <Bird className="h-6 w-6 md:h-8 md:w-8 text-[#FEC6A1] opacity-70" /> </div>
-
+        {/* ... floating elements ... */}
         <div className="container mx-auto px-6 relative z-10">
           <div className="flex flex-col lg:flex-row items-center">
             <div className="w-full lg:w-[55%] mb-12 lg:mb-0 text-center lg:text-left">
@@ -162,13 +156,13 @@ const Home: React.FC = () => {
                 <h3 className="text-xl font-bold mb-3 text-storytime-green">Generate Story</h3>
                 <p className="text-gray-600 text-sm"> Our AI crafts a unique story based on your input. Review and edit the text as needed. (First one's free!) </p>
              </div>
-             {/* Step 3 */}
+             {/* Step 3 --- FIXED ICON --- */}
              <div className="flex flex-col items-center text-center p-4">
-                 {/* Corrected icon reference */}
-                <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> <Headphones className="h-8 w-8 text-storytime-pink" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span> </div>
+                <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> <Mic className="h-8 w-8 text-storytime-pink" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span> </div>
                 <h3 className="text-xl font-bold mb-3 text-storytime-pink">Add Voice</h3>
                 <p className="text-gray-600 text-sm"> Select a professional narrator or easily record your own voice using our voice cloning feature. </p>
              </div>
+             {/* --- END FIX --- */}
               {/* Step 4 */}
              <div className="flex flex-col items-center text-center p-4">
                 <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFF5E7] flex items-center justify-center"> <PlayCircle className="h-8 w-8 text-storytime-orange" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">4</span> </div>
@@ -188,8 +182,7 @@ const Home: React.FC = () => {
 
       {/* Featured Stories Section */}
       <section className="py-20 bg-storytime-background relative overflow-hidden">
-          <div className="absolute top-10 left-10 opacity-20"> <Leaf className="h-20 w-20 text-[#06D6A0] transform rotate-45" /> </div>
-          <div className="absolute bottom-10 right-10 opacity-20"> <Cloud className="h-24 w-24 text-[#4FB8FF]" /> </div>
+          {/* ... decorative elements ... */}
           <div className="container mx-auto px-6 relative z-10">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-10 gap-4">
                   <h2 className="text-3xl md:text-4xl font-display font-bold text-[#8A4FFF] text-center sm:text-left">Magical Tales</h2>
@@ -197,6 +190,7 @@ const Home: React.FC = () => {
                       Explore all stories &rarr;
                   </Link>
               </div>
+              {/* Custom cards with audio */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {featuredStories.map((story) => (
                       <div key={story.id} className="bg-white rounded-xl overflow-hidden shadow-md transition-all duration-300 hover:shadow-lg flex flex-col">
@@ -211,13 +205,8 @@ const Home: React.FC = () => {
                           {/* Content */}
                           <div className="p-4 flex flex-col flex-grow">
                               <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-1">{story.title}</h3>
-                              {/* Footer area containing only the Play button */}
+                              {/* Footer area - Duration REMOVED */}
                               <div className="flex items-center justify-end mt-auto pt-2 text-sm text-gray-500">
-                                  {/* --- Duration REMOVED --- */}
-                                  {/* <div className="flex items-center space-x-1">
-                                      <Clock className="h-4 w-4" />
-                                      <span>{story.duration}</span>
-                                  </div> */}
                                   {/* Play/Pause Button */}
                                   <Button
                                       variant="ghost"
@@ -247,6 +236,7 @@ const Home: React.FC = () => {
 
       {/* CTA Section */}
       <section className="py-20 bg-gradient-to-r from-storytime-blue to-storytime-green text-white relative overflow-hidden">
+         {/* ... section content ... */}
             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> <div className="wave"></div> </div>
             <div className="container mx-auto px-6 text-center relative z-10">
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-6">Begin your storytelling adventure</h2>

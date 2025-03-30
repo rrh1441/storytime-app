@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { BookOpen, Menu, X } from "lucide-react"; 
@@ -8,6 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, logout, loading } = useAuth(); // Get user, logout function, and loading state
+
+  // Reset menu state on component mount and when location changes
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -77,9 +82,9 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu - Fixed to not block other elements */}
       {isMenuOpen && (
-         <div className="fixed inset-0 top-[69px] z-30 bg-white/95 backdrop-blur-sm md:hidden animate-fade-in">
+         <div className="fixed inset-0 top-[69px] z-30 bg-white md:hidden">
           <div className="flex flex-col p-8 space-y-6">
             <a
               href="/#how-it-works"

@@ -1,32 +1,32 @@
 // src/pages/Home.tsx
-import React, { useState, useRef, useEffect } from 'react'; // Ensure React, useState, useRef, useEffect are imported
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Headphones, Sparkles, Users, Clock, BarChart, Bird, Leaf, Cloud, PenTool, Mic, PlayCircle, PauseCircle } from 'lucide-react'; // Added PlayCircle, PauseCircle
-// StoryCard is NO LONGER needed here as we render custom cards for features
+// Removed unused icons like BookOpen, Headphones, Users, BarChart, Mic
+import { Sparkles, Clock, Bird, Leaf, Cloud, PenTool, PlayCircle, PauseCircle } from 'lucide-react';
 
-// Updated featured stories data with correct paths and no ageRange
+// Updated featured stories data (Duration is still here but won't be displayed)
 const featuredStories = [
   {
-    id: 'cosmic', // Unique ID for state/ref mapping
+    id: 'cosmic',
     title: 'Cosmic Adventures',
-    coverImage: '/Cosmic.png', // Path in /public
-    audioSrc: '/Cosmic.mp3',   // Path in /public
-    duration: '4 min',
+    coverImage: '/Cosmic.png',
+    audioSrc: '/Cosmic.mp3',
+    duration: '4 min', // We'll just not render this part
   },
   {
     id: 'flying',
     title: 'The Flying Acorn Ship',
     coverImage: '/Flying.png',
     audioSrc: '/Flying.mp3',
-    duration: '6 min',
+    duration: '6 min', // We'll just not render this part
   },
   {
     id: 'whispers',
     title: 'The Whispers of the Windwood',
     coverImage: '/Whispers.png',
     audioSrc: '/Whispers.mp3',
-    duration: '5 min',
+    duration: '5 min', // We'll just not render this part
   }
 ];
 
@@ -34,7 +34,7 @@ const Home: React.FC = () => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioRefs = useRef<Map<string, HTMLAudioElement | null>>(new Map());
 
-  // Function to manage refs for audio elements
+  // Function to manage refs
   const setAudioRef = (id: string, element: HTMLAudioElement | null) => {
     if (element) {
       audioRefs.current.set(id, element);
@@ -43,27 +43,24 @@ const Home: React.FC = () => {
     }
   };
 
-  // Function to toggle play/pause for a specific story's audio
+  // Function to toggle play/pause
   const togglePlay = (id: string) => {
     const currentAudio = audioRefs.current.get(id);
     const isCurrentlyPlaying = playingAudioId === id;
 
-    // Pause any other playing audio
     audioRefs.current.forEach((audioEl, audioId) => {
         if (audioId !== id && audioEl && !audioEl.paused) {
             audioEl.pause();
-            // Optionally reset other audio to start: audioEl.currentTime = 0;
         }
     });
 
     if (currentAudio) {
       if (isCurrentlyPlaying) {
         currentAudio.pause();
-        setPlayingAudioId(null); // Set playing ID to null when paused
+        setPlayingAudioId(null);
       } else {
         currentAudio.play().then(() => {
-            setPlayingAudioId(id); // Set playing ID when playback starts
-            // Add listener to reset state when audio naturally finishes
+            setPlayingAudioId(id);
             const onEnded = () => {
                 setPlayingAudioId(null);
                 currentAudio.removeEventListener('ended', onEnded);
@@ -71,13 +68,13 @@ const Home: React.FC = () => {
             currentAudio.addEventListener('ended', onEnded);
         }).catch(err => {
             console.error("Error playing audio:", err);
-            setPlayingAudioId(null); // Reset state on playback error
+            setPlayingAudioId(null);
         });
       }
     }
   };
 
-   // Cleanup effect to pause audio when component unmounts
+   // Cleanup effect
    useEffect(() => {
       return () => {
           audioRefs.current.forEach((audioEl) => {
@@ -88,10 +85,9 @@ const Home: React.FC = () => {
 
 
   return (
-    // Use the background color from your updated example
-    <div className="flex flex-col min-h-screen bg-[#F2FCE2]"> {/* Ghibli background color */}
+    <div className="flex flex-col min-h-screen bg-[#F2FCE2]">
 
-      {/* --- RESTORED Hero Section --- */}
+      {/* Hero Section */}
       <section className="relative pt-20 pb-24 md:pb-32 overflow-hidden">
         {/* Floating elements */}
         <div className="absolute top-10 md:top-20 left-5 md:left-20 animate-float opacity-70 z-0"> <Cloud className="h-16 w-16 md:h-20 md:w-20 text-[#D3E4FD]" /> </div>
@@ -103,13 +99,14 @@ const Home: React.FC = () => {
         <div className="container mx-auto px-6 relative z-10">
           <div className="flex flex-col lg:flex-row items-center">
             <div className="w-full lg:w-[55%] mb-12 lg:mb-0 text-center lg:text-left">
-              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl mb-6 leading-tight font-bold text-[#6b7280]">
-                <span className="block text-[#06D6A0]">Discover</span>
-                <span className="block text-[#FF9F51]">Magical</span>
-                <span className="block text-[#4FB8FF]">Stories</span>
+              {/* Headline */}
+              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl mb-6 leading-tight font-bold text-[#4FB8FF]">
+                 Your Ideas,
+                <span className="block text-[#FF9F51]">Their Adventures</span>
               </h1>
+              {/* Subhead */}
               <p className="text-lg md:text-xl text-[#6b7280] mb-8 max-w-xl mx-auto lg:mx-0">
-                Create enchanted tales with AI, brought to life by your voice. Transport children to worlds of wonder where nature and imagination intertwine. Try your first story free!
+                Never run out of stories again. Create stories they'll always remember. Transport your kids to worlds of wonder. Try your first story free!
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                 <Link to="/create-story">
@@ -142,10 +139,8 @@ const Home: React.FC = () => {
           </div>
         </div>
       </section>
-      {/* --- END RESTORED Hero Section --- */}
 
-
-      {/* --- RESTORED How It Works Section --- */}
+      {/* How It Works Section */}
       <section id="how-it-works" className="py-20 bg-white scroll-mt-20">
          <div className="container mx-auto px-6">
            <div className="text-center mb-16">
@@ -169,7 +164,8 @@ const Home: React.FC = () => {
              </div>
              {/* Step 3 */}
              <div className="flex flex-col items-center text-center p-4">
-                <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> <Mic className="h-8 w-8 text-storytime-pink" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span> </div>
+                 {/* Corrected icon reference */}
+                <div className="relative mb-5"> <div className="w-16 h-16 rounded-full bg-[#FFEAF2] flex items-center justify-center"> <Headphones className="h-8 w-8 text-storytime-pink" /> </div> <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-storytime-purple text-white font-bold text-xs">3</span> </div>
                 <h3 className="text-xl font-bold mb-3 text-storytime-pink">Add Voice</h3>
                 <p className="text-gray-600 text-sm"> Select a professional narrator or easily record your own voice using our voice cloning feature. </p>
              </div>
@@ -189,10 +185,8 @@ const Home: React.FC = () => {
             </div>
          </div>
       </section>
-       {/* --- END RESTORED How It Works Section --- */}
 
-
-      {/* --- UPDATED Featured Stories Section --- */}
+      {/* Featured Stories Section */}
       <section className="py-20 bg-storytime-background relative overflow-hidden">
           <div className="absolute top-10 left-10 opacity-20"> <Leaf className="h-20 w-20 text-[#06D6A0] transform rotate-45" /> </div>
           <div className="absolute bottom-10 right-10 opacity-20"> <Cloud className="h-24 w-24 text-[#4FB8FF]" /> </div>
@@ -203,12 +197,11 @@ const Home: React.FC = () => {
                       Explore all stories &rarr;
                   </Link>
               </div>
-              {/* MODIFIED: Render custom cards with audio */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {featuredStories.map((story) => (
                       <div key={story.id} className="bg-white rounded-xl overflow-hidden shadow-md transition-all duration-300 hover:shadow-lg flex flex-col">
-                          {/* Image */}
-                          <div className="relative aspect-[4/3] overflow-hidden">
+                          {/* Image Container - Taller Aspect Ratio */}
+                          <div className="relative aspect-[3/4] overflow-hidden">
                               <img
                                   src={story.coverImage}
                                   alt={story.title}
@@ -218,12 +211,13 @@ const Home: React.FC = () => {
                           {/* Content */}
                           <div className="p-4 flex flex-col flex-grow">
                               <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-1">{story.title}</h3>
-                              <div className="flex items-center justify-between mt-auto pt-2 text-sm text-gray-500">
-                                  {/* Duration */}
-                                  <div className="flex items-center space-x-1">
+                              {/* Footer area containing only the Play button */}
+                              <div className="flex items-center justify-end mt-auto pt-2 text-sm text-gray-500">
+                                  {/* --- Duration REMOVED --- */}
+                                  {/* <div className="flex items-center space-x-1">
                                       <Clock className="h-4 w-4" />
                                       <span>{story.duration}</span>
-                                  </div>
+                                  </div> */}
                                   {/* Play/Pause Button */}
                                   <Button
                                       variant="ghost"
@@ -231,11 +225,7 @@ const Home: React.FC = () => {
                                       className="text-storytime-purple hover:text-storytime-purple/90 flex items-center space-x-1 p-1 h-auto"
                                       onClick={() => togglePlay(story.id)}
                                   >
-                                      {playingAudioId === story.id ? (
-                                          <PauseCircle className="h-6 w-6"/>
-                                      ) : (
-                                          <PlayCircle className="h-6 w-6" />
-                                      )}
+                                      {playingAudioId === story.id ? ( <PauseCircle className="h-6 w-6"/> ) : ( <PlayCircle className="h-6 w-6" /> )}
                                       <span className="text-xs font-medium">{playingAudioId === story.id ? 'Pause' : 'Play'}</span>
                                   </Button>
                               </div>
@@ -252,13 +242,10 @@ const Home: React.FC = () => {
                       </div>
                   ))}
               </div>
-              {/* --- END MODIFICATION --- */}
           </div>
       </section>
-       {/* --- END UPDATED Featured Stories Section --- */}
 
-
-      {/* --- RESTORED CTA Section --- */}
+      {/* CTA Section */}
       <section className="py-20 bg-gradient-to-r from-storytime-blue to-storytime-green text-white relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> <div className="wave"></div> </div>
             <div className="container mx-auto px-6 text-center relative z-10">
@@ -274,7 +261,6 @@ const Home: React.FC = () => {
             </div>
              <div className="absolute bottom-0 left-0 w-full h-12 bg-[#F2FCE2] opacity-20"> <div className="wave-bottom"></div> </div>
       </section>
-       {/* --- END RESTORED CTA Section --- */}
 
     </div>
   );

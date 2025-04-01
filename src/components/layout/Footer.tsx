@@ -16,7 +16,6 @@ const Footer = () => {
             <p className="text-[#6b7280] mb-4 text-sm">
               Create magical, personalized children's stories with AI assistance and bring them to life with your own voice.
             </p>
-            {/* Social Links DIV is removed */}
           </div> {/* Closes Logo column div */}
 
           {/* Product Links Column */}
@@ -36,12 +35,10 @@ const Footer = () => {
           <p className="text-[#6b7280] text-sm text-center">
             &copy; {new Date().getFullYear()} StoryTime. All rights reserved. Made with Magic ✨.
           </p>
-          {/* --- Privacy and Terms Links REMOVED --- */}
-          {/* ... commented out section ... */}
-          {/* --- END REMOVAL --- */}
+          {/* --- The entire multi-line comment block from lines 39-44 in original is REMOVED --- */}
         </div> {/* Closes Copyright div */}
-      </div> {/* <--- ADD THIS MISSING CLOSING TAG */}
-    </footer> {/* This closes the main footer tag */}
+      </div> {/* Closes container div */}
+    </footer>
   );
 };
 

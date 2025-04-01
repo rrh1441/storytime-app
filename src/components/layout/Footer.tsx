@@ -19,18 +19,6 @@ const Footer = () => {
             {/* Social Links DIV is removed */}
           </div>
 
-          {/* Product Links Column */}
-          <div>
-            <h3 className="text-sm font-semibold text-[#FF9F51] uppercase tracking-wider mb-4">Product</h3>
-            <ul className="space-y-3">
-              <li> <a href="/#how-it-works" className="text-[#6b7280] hover:text-[#8A4FFF] transition-colors text-sm"> How It Works </a> </li>
-              <li> <Link to="/create-story" className="text-[#6b7280] hover:text-[#8A4FFF] transition-colors text-sm"> Create Story </Link> </li>
-              <li> <Link to="/stories" className="text-[#6b7280] hover:text-[#8A4FFF] transition-colors text-sm"> Story Library </Link> </li>
-              <li> <a href="mailto:support@simpleappsgroup.com" className="text-[#6b7280] hover:text-[#8A4FFF] transition-colors flex items-center space-x-1 text-sm"> <Mail className="h-4 w-4" /> <span>Contact Us</span> </a> </li>
-            </ul>
-          </div>
-        </div>
-
         {/* Bottom Copyright Section */}
         <div className="border-t border-[#06D6A0]/20 pt-8">
           <p className="text-[#6b7280] text-sm text-center">

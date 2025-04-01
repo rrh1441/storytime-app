@@ -1,0 +1,9 @@
+// vercel.json
+{
+    "rewrites": [
+      {
+        "source": "/((?!api|.*\\.\\w+|_next|static|favicon.ico|assets).*)",
+        "destination": "/index.html"
+      }
+    ]
+  }

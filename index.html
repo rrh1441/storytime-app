@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -8,23 +7,39 @@
     <meta name="description" content="Create magical, personalized children's stories with AI assistance and bring them to life with professional narration or your own voice." />
     <meta name="author" content="StoryTime" />
 
+    {/* --- Open Graph Meta Tags --- */}
     <meta property="og:title" content="StoryTime - Interactive Children's Story Platform" />
     <meta property="og:description" content="Create magical, personalized children's stories with AI assistance and bring them to life with professional narration or your own voice." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    {/* --- UPDATED IMAGE URL --- */}
+    <meta property="og:image" content="https://yourstorytime.vercel.app/storytime-preview.png" />
+    {/* You might also want to add og:url */}
+    {/* <meta property="og:url" content="https://yourstorytime.vercel.app/" /> */}
 
+    {/* --- Twitter Card Meta Tags --- */}
     <meta name="twitter:card" content="summary_large_image" />
+    {/* If you have a Twitter handle for the app, replace @storytimeapp */}
     <meta name="twitter:site" content="@storytimeapp" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-    
+    {/* --- UPDATED IMAGE URL --- */}
+    <meta name="twitter:image" content="https://yourstorytime.vercel.app/storytime-preview.png" />
+    {/* You can optionally add twitter:title and twitter:description if you want them different from OG tags */}
+    {/* <meta name="twitter:title" content="StoryTime - Interactive Children's Story Platform" /> */}
+    {/* <meta name="twitter:description" content="Create magical, personalized children's stories..." /> */}
+
+    {/* --- Fonts and other head elements --- */}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Inter:wght@300..700&display=swap" rel="stylesheet">
+
+    {/* Add Favicon links here if you have them */}
+    {/* <link rel="icon" href="/favicon.ico" sizes="any" /> */}
+    {/* <link rel="icon" href="/favicon.svg" type="image/svg+xml" /> */}
+
   </head>
 
   <body>
     <div id="root"></div>
-    <!-- IMPORTANT: DO NOT REMOVE THIS SCRIPT TAG OR THIS VERY COMMENT! -->
+    {/* IMPORTANT: DO NOT REMOVE THIS SCRIPT TAG OR THIS VERY COMMENT! */}
     <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

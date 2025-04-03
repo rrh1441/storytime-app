@@ -31,8 +31,6 @@ const plans = [
     credits: 10,
     features: [
       '10 Story Credits per Month',
-      'Generate Basic Stories',
-      'Access Standard Voices',
       'Save Stories to Library',
     ],
     cta: 'Get Started',
@@ -46,8 +44,6 @@ const plans = [
     credits: 100,
     features: [
       '100 Story Credits per Month',
-      'Generate Advanced Stories',
-      'Access Premium Voices',
       'Priority Support',
       'Record Your Own Voice (Coming Soon!)'
     ],

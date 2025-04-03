@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       stories: {
@@ -107,26 +132,121 @@ export type Database = {
           },
         ]
       }
+      storybook_pages: {
+        Row: {
+          created_at: string
+          id: string
+          image_prompt: string | null
+          image_status: string
+          image_url: string | null
+          page_number: number
+          storybook_id: string
+          text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_status?: string
+          image_url?: string | null
+          page_number: number
+          storybook_id: string
+          text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_status?: string
+          image_url?: string | null
+          page_number?: number
+          storybook_id?: string
+          text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storybook_pages_storybook_id_fkey"
+            columns: ["storybook_id"]
+            isOneToOne: false
+            referencedRelation: "storybooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storybooks: {
+        Row: {
+          created_at: string
+          educational_focus: string | null
+          id: string
+          main_character: string | null
+          reference_image_url: string | null
+          theme: string
+          title: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          educational_focus?: string | null
+          id?: string
+          main_character?: string | null
+          reference_image_url?: string | null
+          theme: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          educational_focus?: string | null
+          id?: string
+          main_character?: string | null
+          reference_image_url?: string | null
+          theme?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       users: {
         Row: {
+          active_plan_price_id: string | null
           created_at: string
           email: string | null
           id: string
           name: string | null
+          story_credits: number
+          stripe_customer_id: string | null
+          subscription_current_period_end: string | null
+          subscription_status: string | null
           subscription_tier: string | null
         }
         Insert: {
+          active_plan_price_id?: string | null
           created_at?: string
           email?: string | null
           id: string
           name?: string | null
+          story_credits?: number
+          stripe_customer_id?: string | null
+          subscription_current_period_end?: string | null
+          subscription_status?: string | null
           subscription_tier?: string | null
         }
         Update: {
+          active_plan_price_id?: string | null
           created_at?: string
           email?: string | null
           id?: string
           name?: string | null
+          story_credits?: number
+          stripe_customer_id?: string | null
+          subscription_current_period_end?: string | null
+          subscription_status?: string | null
           subscription_tier?: string | null
         }
         Relationships: []
@@ -174,7 +294,12 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      subscription_status_enum:
+        | "active"
+        | "canceled"
+        | "past_due"
+        | "incomplete"
+        | "trialing"
     }
     CompositeTypes: {
       [_ in never]: never

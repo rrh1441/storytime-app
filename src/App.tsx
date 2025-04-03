@@ -1,17 +1,11 @@
 // src/App.tsx
-
-// --- Existing Imports ---
 import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster as Sonner } from "@/components/ui/sonner"; // Ensure correct import if using Sonner
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-// Note: Consider changing these layout imports to use aliases too for consistency
-// e.g., import Navbar from "@/components/layout/Navbar";
-import Navbar from "./components/layout/Navbar";
-import Footer from "./components/layout/Footer";
-// Import pages using aliases for consistency if desired
-// e.g., import Home from "@/pages/Home";
+import Navbar from "./components/layout/Navbar"; // Using relative path as in original
+import Footer from "./components/layout/Footer"; // Using relative path as in original
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import StoryCreator from "./pages/StoryCreator";
@@ -21,45 +15,39 @@ import VoiceProfiles from "./pages/VoiceProfiles";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import PricingPage from "./pages/PricingPage"; // Import the new page
 
-// --- CORRECTED Import Path ---
 import ProtectedRoute from "@/components/ProtectedRoute"; // Use alias path
 
-// --- Existing QueryClient setup ---
 const queryClient = new QueryClient();
 
 const App = () => (
-  // --- Existing Providers are kept ---
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
+      <Sonner /> {/* Ensure you intend to use Sonner alongside the other Toaster */}
       <BrowserRouter>
-        {/* --- Existing Layout is kept --- */}
         <div className="flex flex-col min-h-screen">
-          <Navbar /> {/* You might update Navbar later to show login/logout state */}
+          <Navbar />
           <main className="flex-grow">
-            {/* --- Routes restructured --- */}
             <Routes>
               {/* --- Public Routes --- */}
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
-              {/* Story reading page - assume public for now */}
               <Route path="/story/:id/play" element={<StoryReading />} />
-              {/* --- MOVED: Story Creator is now public --- */}
               <Route path="/create-story" element={<StoryCreator />} />
+              <Route path="/pricing" element={<PricingPage />} /> {/* Pricing Route */}
 
               {/* --- Protected Routes --- */}
-              <Route element={<ProtectedRoute />}> {/* Wrap protected routes */}
+              <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
-                {/* <Route path="/create-story" element={<StoryCreator />} /> // Removed from here */}
                 <Route path="/stories" element={<StoryLibrary />} />
                 <Route path="/voice-profiles" element={<VoiceProfiles />} />
-                {/* Add other routes that require login here */}
+                {/* Add other protected routes here */}
               </Route>
 
-              {/* Not Found Route (Keep last) */}
+              {/* Not Found Route */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

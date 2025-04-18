@@ -422,7 +422,7 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* ---------- Share Story ---------- */}
+              {/* ---------- Sha re Story ---------- */}
               <TabsContent value="share">
                 <Card>
                   <CardHeader><CardTitle>Share Your Story</CardTitle></CardHeader>

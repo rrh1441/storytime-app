@@ -1,0 +1,25 @@
+{
+    "name": "storytime-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+      "dev": "nodemon --watch src -e ts --exec ts-node src/index.ts",
+      "build": "tsc",
+      "start": "node dist/index.js"
+    },
+    "dependencies": {
+      "express": "^4.19.2",
+      "openai": "^4.37.0",
+      "@supabase/supabase-js": "^2.40.0",
+      "tiktoken": "^1.0.7",
+      "fluent-ffmpeg": "^2.1.2",
+      "ffmpeg-static": "^5.2.0",
+      "dotenv": "^16.4.5"
+    },
+    "devDependencies": {
+      "ts-node": "^10.9.2",
+      "typescript": "^5.4.5",
+      "nodemon": "^3.1.0"
+    }
+  }

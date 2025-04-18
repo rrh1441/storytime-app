@@ -1,101 +1,71 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025‑04‑18  (FULL FILE — uses Fly backend, no Supabase Edge)
+// StoryCreator.tsx  •  2025‑04‑18
 // -----------------------------------------------------------------------------
+// • Uses absolute API_BASE for Fly backend
+// • Theme field is free text (no datalist dropdown)
+// • CTA copy: “Want to make longer tales? Sign Up”
+// -----------------------------------------------------------------------------
+
 import React, { useState, KeyboardEvent } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { API_BASE } from "@/lib/apiBase";
 
-/* ─────────── UI components ─────────── */
+/* ─────────── UI ─────────── */
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
-import {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent,
+  Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent,
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  Alert, AlertDescription, AlertTitle,
+} from "@/components/ui/alert";
+import {
+  Dialog, DialogTrigger, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  RadioGroup,
-  RadioGroupItem,
+  RadioGroup, RadioGroupItem,
 } from "@/components/ui/radio-group";
-
-/* ─────────────── Icons ─────────────── */
 import {
-  Sparkles,
-  Edit,
-  Headphones,
-  Share2,
-  PenTool,
-  Loader2,
-  AlertCircle,
-  Mic,
-  Info,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+
+/* ─────────── Icons ─────────── */
+import {
+  Sparkles, Edit, Headphones, Share2, PenTool, Loader2,
+  AlertCircle, Mic, Info,
 } from "lucide-react";
 
 /* ─────────── Static data ─────────── */
 const THEME_SUGGESTIONS = [
-  "Adventure",
-  "Friendship",
-  "Magic",
-  "Space",
-  "Animals",
-  "Kindness",
+  "Adventure", "Friendship", "Magic", "Space", "Animals", "Kindness",
 ] as const;
 const LENGTH_OPTIONS = [3, 5, 10, 15, 30, 60] as const;
 const SUPPORTED_VOICES = [
-  { id: "alloy", label: "Alex (US • Neutral Male)" },
-  { id: "ash", label: "Aisha (US • Warm Female)" },
-  { id: "ballad", label: "Bella (UK • Lyrical Female)" },
-  { id: "coral", label: "Chloe (AU • Bright Female)" },
-  { id: "echo", label: "Ethan (US • Friendly Male)" },
-  { id: "fable", label: "Felix (UK • Storyteller Male)" },
-  { id: "nova", label: "Nora (US • Energetic Female)" },
-  { id: "onyx", label: "Oscar (US • Deep Male)" },
-  { id: "sage", label: "Saanvi (IN • Clear Female)" },
-  { id: "shimmer", label: "Selina (US • Expressive Female)" },
+  { id: "alloy",   label: "Alex (US • Neutral Male)" },
+  { id: "ash",     label: "Aisha (US • Warm Female)" },
+  { id: "ballad",  label: "Bella (UK • Lyrical Female)" },
+  { id: "coral",   label: "Chloe (AU • Bright Female)" },
+  { id: "echo",    label: "Ethan (US • Friendly Male)" },
+  { id: "fable",   label: "Felix (UK • Storyteller Male)" },
+  { id: "nova",    label: "Nora (US • Energetic Female)" },
+  { id: "onyx",    label: "Oscar (US • Deep Male)" },
+  { id: "sage",    label: "Saanvi (IN • Clear Female)" },
+  { id: "shimmer", label: "Selina (US • Expressive Female)"},
 ] as const;
 const SUPPORTED_LANGUAGES = [
   "Afrikaans","Arabic","Armenian","Azerbaijani","Belarusian","Bosnian","Bulgarian",
@@ -119,17 +89,12 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-/* ─────────── Component ─────────── */
 const StoryCreator: React.FC = () => {
   const { user } = useAuth();
   const isSubscriber = Boolean(user?.user_metadata?.subscriber);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
 
   const [storyContent, setStoryContent] = useState("");
-  const [generatedAudioUrl, setGeneratedAudioUrl] =
-    useState<string | null>(null);
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
   const [selectedLanguage, setSelectedLanguage] = useState("English");
   const [activeTab, setActiveTab] =
@@ -137,66 +102,45 @@ const StoryCreator: React.FC = () => {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      storyTitle: "",
-      theme: "",
-      length: 3,
-      mainCharacter: "",
-      educationalFocus: "",
-      additionalInstructions: "",
-    },
+    defaultValues: { storyTitle: "", theme: "", length: 3 },
   });
 
-  /* ---- mutations (hit Fly backend) ---- */
+  /* ---- mutations ---- */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
-      const resp = await fetch("/generate-story", {
+      const r = await fetch(`${API_BASE}/generate-story`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!resp.ok) throw new Error(await resp.text());
-      return (await resp.json()) as { story: string; title: string };
+      if (!r.ok) throw new Error(await r.text());
+      return (await r.json()) as { story: string; title: string };
     },
     onSuccess: ({ story, title }) => {
       setStoryContent(story);
       form.setValue("storyTitle", title || "");
       setActiveTab("edit");
     },
-    onError: (err: Error) =>
-      toast({
-        title: "Generation failed",
-        description: err.message,
-        variant: "destructive",
-      }),
+    onError: (e: Error) =>
+      toast({ title: "Generation failed", description: e.message, variant: "destructive" }),
   });
 
   const generateAudio = useMutation({
     mutationFn: async ({ text, voiceId }: { text: string; voiceId: string }) => {
-      const resp = await fetch("/tts", {
+      const r = await fetch(`${API_BASE}/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice: voiceId, language: selectedLanguage }),
       });
-      if (!resp.ok) throw new Error(await resp.text());
-      const { audioUrl } = (await resp.json()) as { audioUrl: string };
-      return audioUrl;
+      if (!r.ok) throw new Error(await r.text());
+      return (await r.json()).audioUrl as string;
     },
-    onSuccess: (url) => {
-      setGeneratedAudioUrl(url);
-      setActiveTab("share");
-    },
-    onError: (err: Error) =>
-      toast({
-        title: "Audio failed",
-        description: err.message,
-        variant: "destructive",
-      }),
+    onSuccess: (url) => { setGeneratedAudioUrl(url); setActiveTab("share"); },
+    onError: (e: Error) =>
+      toast({ title: "Audio failed", description: e.message, variant: "destructive" }),
   });
 
-  const submitOutline: SubmitHandler<FormValues> = (data) =>
-    generateStory.mutate(data);
-
+  /* ---- helpers ---- */
   const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     const match = THEME_SUGGESTIONS.find((t) =>
@@ -204,10 +148,9 @@ const StoryCreator: React.FC = () => {
     );
     if (match) form.setValue("theme", match);
   };
+  const addLen = (form.watch("additionalInstructions") || "").length;
 
-  const addTextLen = (form.watch("additionalInstructions") || "").length;
-
-  /* ---- render ---- */
+  /* ---- UI ---- */
   return (
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
@@ -217,200 +160,118 @@ const StoryCreator: React.FC = () => {
 
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => setActiveTab(v as any)}
-              className="space-y-6"
-            >
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="parameters">
-                  <PenTool className="mr-1 h-4 w-4" />
-                  Story Outline
-                </TabsTrigger>
-                <TabsTrigger value="edit" disabled={!storyContent}>
-                  <Edit className="mr-1 h-4 w-4" />
-                  Edit / Preview
-                </TabsTrigger>
-                <TabsTrigger value="voice" disabled={!storyContent}>
-                  <Headphones className="mr-1 h-4 w-4" />
-                  Voice & Audio
-                </TabsTrigger>
-                <TabsTrigger value="share" disabled={!generatedAudioUrl}>
-                  <Share2 className="mr-1 h-4 w-4" />
-                  Share Story
-                </TabsTrigger>
+                <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4" />Story Outline</TabsTrigger>
+                <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4" />Edit / Preview</TabsTrigger>
+                <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4" />Voice & Audio</TabsTrigger>
+                <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4" />Share Story</TabsTrigger>
               </TabsList>
 
-              {/* -------- parameters -------- */}
+              {/* PARAMETERS */}
               <TabsContent value="parameters">
                 <Card>
                   <CardHeader>
                     <CardTitle>Story Outline</CardTitle>
-                    <CardDescription>
-                      Fill in the required fields below.
-                    </CardDescription>
+                    <CardDescription>Fill in the required fields below.</CardDescription>
                   </CardHeader>
-
                   <CardContent className="space-y-6">
-                    {/* title (optional) */}
+                    {/* TITLE */}
                     <FormField
-                      control={form.control}
-                      name="storyTitle"
+                      control={form.control} name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Story Title</FormLabel>
+                          <FormControl><Input placeholder="The Great Treehouse Adventure" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {/* THEME */}
+                    <FormField
+                      control={form.control} name="theme"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Theme / Genre <span className="text-red-500">*</span></FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="The Great Treehouse Adventure"
                               {...field}
+                              placeholder="e.g., Adventure, Friendship, Magic"
+                              onKeyDown={handleThemeKey}
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* theme (required) */}
+                    {/* LENGTH */}
                     <FormField
-                      control={form.control}
-                      name="theme"
+                      control={form.control} name="length"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
-                            Theme / Genre <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <>
-                              <Input
-                                {...field}
-                                list="theme-suggestions"
-                                placeholder="e.g., Adventure, Friendship, Magic"
-                                onKeyDown={handleThemeKey}
-                              />
-                              <datalist id="theme-suggestions">
-                                {THEME_SUGGESTIONS.map((t) => (
-                                  <option key={t} value={t} />
-                                ))}
-                              </datalist>
-                            </>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {/* length (required) */}
-                    <FormField
-                      control={form.control}
-                      name="length"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            Approximate Length (minutes){" "}
-                            <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <RadioGroup
-                            className="flex flex-wrap gap-3"
-                            value={String(field.value)}
-                            onValueChange={(v) => field.onChange(Number(v))}
-                          >
+                          <FormLabel>Approximate Length (minutes) <span className="text-red-500">*</span></FormLabel>
+                          <RadioGroup className="flex flex-wrap gap-3" value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
                             {LENGTH_OPTIONS.map((len) => {
                               const disabled = !isSubscriber && len !== 3;
                               return (
                                 <div key={len} className="flex items-center">
-                                  <RadioGroupItem
-                                    value={String(len)}
-                                    id={`len-${len}`}
-                                    disabled={disabled}
-                                  />
-                                  <Label
-                                    htmlFor={`len-${len}`}
-                                    className={
-                                      disabled
-                                        ? "ml-1 text-muted-foreground"
-                                        : "ml-1"
-                                    }
-                                  >
-                                    {len}
-                                  </Label>
+                                  <RadioGroupItem value={String(len)} id={`len-${len}`} disabled={disabled}/>
+                                  <Label htmlFor={`len-${len}`} className={disabled ? "ml-1 text-muted-foreground" : "ml-1"}>{len}</Label>
                                 </div>
                               );
                             })}
                           </RadioGroup>
                           {!isSubscriber && (
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Want longer tales?{" "}
-                              <Link
-                                to="/signup"
-                                className="text-primary underline"
-                              >
-                                Sign Up For Longer Tales
-                              </Link>
+                              Want to make longer tales?{" "}
+                              <Link to="/signup" className="text-primary underline">Sign Up</Link>
                             </p>
                           )}
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* main character (optional) */}
+                    {/* MAIN CHARACTER */}
                     <FormField
-                      control={form.control}
-                      name="mainCharacter"
+                      control={form.control} name="mainCharacter"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Main Character</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
-                              {...field}
-                            />
-                          </FormControl>
+                          <FormControl><Input placeholder="e.g., Penelope, Hudson, Luna the Rabbit" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* educational focus (optional) */}
+                    {/* EDUCATIONAL FOCUS */}
                     <FormField
-                      control={form.control}
-                      name="educationalFocus"
+                      control={form.control} name="educationalFocus"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Educational Focus</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
-                              {...field}
-                            />
-                          </FormControl>
+                          <FormControl><Input placeholder="e.g., Counting to 10, The Water Cycle, Being Kind" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* special requests (optional) */}
+                    {/* SPECIAL REQUESTS */}
                     <FormField
-                      control={form.control}
-                      name="additionalInstructions"
+                      control={form.control} name="additionalInstructions"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Special Requests</FormLabel>
-                          <FormControl>
-                            <Textarea rows={4} {...field} />
-                          </FormControl>
-                          <p className="text-right text-sm text-muted-foreground">
-                            {addTextLen}/500
-                          </p>
+                          <FormControl><Textarea rows={4} {...field} /></FormControl>
+                          <p className="text-right text-sm text-muted-foreground">{addLen}/500</p>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </CardContent>
-
                   <CardFooter>
                     <Button
                       type="button"
                       className="w-full bg-storytime-blue text-white"
-                      disabled={
-                        generateStory.isPending || !form.formState.isValid
-                      }
-                      onClick={form.handleSubmit(submitOutline)}
+                      disabled={generateStory.isPending || !form.formState.isValid}
+                      onClick={form.handleSubmit((d) => generateStory.mutate(d))}
                     >
                       {generateStory.isPending ? (
                         <>
@@ -428,104 +289,66 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* -------- edit -------- */}
+              {/* EDIT / PREVIEW */}
               <TabsContent value="edit">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Edit & Preview</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Edit & Preview</CardTitle></CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label htmlFor="story-editor" className="mb-1 block">
-                        Edit Text
-                      </Label>
-                      <Textarea
-                        id="story-editor"
-                        value={storyContent}
-                        onChange={(e) => setStoryContent(e.target.value)}
-                        rows={20}
-                      />
+                      <Label htmlFor="story-editor" className="mb-1 block">Edit Text</Label>
+                      <Textarea id="story-editor" value={storyContent} onChange={(e) => setStoryContent(e.target.value)} rows={20} />
                     </div>
                     <div>
                       <Label className="mb-1 block">Preview</Label>
                       <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
                         {storyContent
                           .split("\n")
-                          .map((p) => p.replace(/^#\s+/, "")) // drop markdown #
-                          .map((p, i) => (
-                            <p key={i}>{p}</p>
-                          ))}
+                          .map((p) => p.replace(/^#\s+/, "")) /* strip leading markdown '#' */
+                          .map((p, i) => <p key={i}>{p}</p>)}
                       </article>
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button
-                      type="button"
-                      className="ml-auto bg-storytime-blue text-white"
-                      onClick={() => setActiveTab("voice")}
-                    >
+                    <Button type="button" className="ml-auto bg-storytime-blue text-white" onClick={() => setActiveTab("voice")}>
                       Continue to Voice & Audio
                     </Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
 
-              {/* -------- voice -------- */}
+              {/* VOICE & AUDIO */}
               <TabsContent value="voice">
                 <Card>
                   <CardHeader>
                     <CardTitle>Add Narration</CardTitle>
-                    <CardDescription>
-                      Select voice & language, then generate audio.
-                    </CardDescription>
+                    <CardDescription>Select voice & language, then generate audio.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* voice select */}
                     <div className="space-y-2">
                       <Label htmlFor="voice-select">Voice</Label>
-                      <Select
-                        value={selectedVoiceId}
-                        onValueChange={(v) => {
-                          setSelectedVoiceId(v);
-                          setGeneratedAudioUrl(null);
-                        }}
-                      >
-                        <SelectTrigger id="voice-select">
-                          <SelectValue placeholder="Choose a voice" />
-                        </SelectTrigger>
+                      <Select value={selectedVoiceId} onValueChange={(v) => { setSelectedVoiceId(v); setGeneratedAudioUrl(null); }}>
+                        <SelectTrigger id="voice-select"><SelectValue placeholder="Choose a voice" /></SelectTrigger>
                         <SelectContent>
                           {SUPPORTED_VOICES.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>
-                              {v.label}
-                            </SelectItem>
+                            <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     {/* language */}
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="language-input"
-                        className="flex items-center gap-1"
-                      >
+                      <Label htmlFor="language-input" className="flex items-center gap-1">
                         Language
                         <Dialog>
-                          <DialogTrigger asChild>
-                            <button type="button">
-                              <Info className="h-4 w-4 opacity-70" />
-                            </button>
-                          </DialogTrigger>
+                          <DialogTrigger asChild><button type="button"><Info className="h-4 w-4 opacity-70" /></button></DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Supported Languages</DialogTitle>
-                              <DialogDescription>
-                                Start typing to filter.
-                              </DialogDescription>
+                              <DialogDescription>Start typing to filter.</DialogDescription>
                             </DialogHeader>
                             <ul className="mt-4 max-h-72 grid grid-cols-2 gap-1 overflow-y-auto pr-2 text-sm">
-                              {SUPPORTED_LANGUAGES.map((lang) => (
-                                <li key={lang}>{lang}</li>
-                              ))}
+                              {SUPPORTED_LANGUAGES.map((lang) => <li key={lang}>{lang}</li>)}
                             </ul>
                           </DialogContent>
                         </Dialog>
@@ -538,9 +361,7 @@ const StoryCreator: React.FC = () => {
                         placeholder="English, Spanish, French…"
                       />
                       <datalist id="lang-suggestions">
-                        {SUPPORTED_LANGUAGES.map((lang) => (
-                          <option key={lang} value={lang} />
-                        ))}
+                        {SUPPORTED_LANGUAGES.map((lang) => <option key={lang} value={lang} />)}
                       </datalist>
                     </div>
                     {/* generate audio */}
@@ -549,16 +370,8 @@ const StoryCreator: React.FC = () => {
                       className="w-full bg-storytime-blue text-white"
                       onClick={() =>
                         storyContent && selectedVoiceId
-                          ? generateAudio.mutate({
-                              text: storyContent,
-                              voiceId: selectedVoiceId,
-                            })
-                          : toast({
-                              title: "Missing input",
-                              description:
-                                "Provide story text and select a voice.",
-                              variant: "destructive",
-                            })
+                          ? generateAudio.mutate({ text: storyContent, voiceId: selectedVoiceId })
+                          : toast({ title: "Missing input", description: "Provide story text and select a voice.", variant: "destructive" })
                       }
                       disabled={generateAudio.isPending || !selectedVoiceId}
                     >
@@ -578,38 +391,25 @@ const StoryCreator: React.FC = () => {
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>
-                          {generateAudio.error.message}
-                        </AlertDescription>
+                        <AlertDescription>{generateAudio.error.message}</AlertDescription>
                       </Alert>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              {/* -------- share -------- */}
+              {/* SHARE */}
               <TabsContent value="share">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Share Your Story</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Share Your Story</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     {generatedAudioUrl && (
                       <>
-                        <audio
-                          controls
-                          src={generatedAudioUrl}
-                          className="w-full"
-                        />
+                        <audio controls src={generatedAudioUrl} className="w-full" />
                         <p className="text-sm text-muted-foreground">
-                          Copy the link or download the MP3 to share with
-                          friends and family.
+                          Copy the link or download the MP3 to share with friends and family.
                         </p>
-                        <Input
-                          readOnly
-                          value={generatedAudioUrl}
-                          onFocus={(e) => e.currentTarget.select()}
-                        />
+                        <Input readOnly value={generatedAudioUrl} onFocus={(e) => e.currentTarget.select()} />
                       </>
                     )}
                   </CardContent>

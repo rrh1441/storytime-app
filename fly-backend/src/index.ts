@@ -1,131 +1,81 @@
 /**
- * index.ts (entry point)
+ * index.ts • 2025‑04‑18
  * --------------------------------------------------------------------------
- * Express + Fly.io “one free story” backend.
+ * Adds an env‑flag (DISABLE_STORY_LIMIT=true) that bypasses the one‑free‑story
+ * enforcement — handy for temporary testing.  All other behavior unchanged.
  * --------------------------------------------------------------------------
  */
-
 import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 import helmet from "helmet";
 
-import { generateStory } from "./services/story.js";   // you already have this
+import { generateStory } from "./services/story.js";
 import { generateSpeech, VOICES } from "./services/tts.js";
 import { checkStoryUsed, markStoryUsed } from "./services/usage.js";
 
-/* -------------------------------------------------------------------------- */
-/*  Express app setup                                                         */
-/* -------------------------------------------------------------------------- */
-const app = express();
-const PORT: number = Number(process.env.PORT ?? 8080);
+const PORT = Number(process.env.PORT) || 8080;
+const STORY_LIMIT_DISABLED = process.env.DISABLE_STORY_LIMIT === "true";
 
-// Basic hardening & body parsing
+const app = express();
+
+/* ---------------- Security / logging / rate‑limit ---------------- */
 app.use(helmet());
 app.use(express.json({ limit: "2mb" }));
-
-// HTTP request logging ──────────────────────────────────────────────────────
-// Install once:  npm i morgan @types/morgan --save
-// Switch "dev" to "combined" in prod if you like CloudFront / access‑log style
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
-// Generic abuse / DDoS protection
-app.use(
-  rateLimit({
-    windowMs: 60_000, // 1 minute
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+/* ---------------- Healthcheck ---------------- */
+app.get("/health", (_req, res) => res.status(200).send("ok"));
 
-/* -------------------------------------------------------------------------- */
-/*  Health check                                                              */
-/* -------------------------------------------------------------------------- */
-app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).send("ok");
-});
+/* ---------------- Story generation ---------------- */
+app.post("/generate-story", async (req: Request, res: Response) => {
+  const sessionId = req.header("x-session-id") ?? "anonymous";
+  const ip        = req.ip;
 
-/* -------------------------------------------------------------------------- */
-/*  Story generation: 1‑time free tier                                        */
-/* -------------------------------------------------------------------------- */
-interface GenerateStoryBody {
-  theme: string;
-  mainCharacter: string;
-  educationalFocus?: string;
-  additionalInstructions?: string;
-}
-
-app.post(
-  "/generate-story",
-  async (req: Request<{}, {}, GenerateStoryBody>, res: Response) => {
-    // session‑id expected from front‑end (e.g., localStorage) via header
-    const sessionId = req.header("x-session-id");
-    const ip = req.ip ?? req.headers["x-forwarded-for"]?.toString() ?? null;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: "Missing x-session-id header." });
-    }
-
-    try {
-      // 1. Enforce “one ever”
+  try {
+    if (!STORY_LIMIT_DISABLED) {
       const alreadyUsed = await checkStoryUsed(sessionId);
       if (alreadyUsed) {
-        return res
-          .status(429)
-          .json({ error: "Free story already used. Please upgrade." });
+        return res.status(429).json({ error: "Free story already used. Upgrade to continue." });
       }
-
-      // 2. Business logic
-      const story = await generateStory(req.body);
-
-      // 3. Persist usage *before* responding (best‑effort)
-      await markStoryUsed(sessionId, ip);
-
-      return res.status(200).json(story);
-    } catch (err: unknown) {
-      // Let the central error handler capture it
-      return res.status(500).json({ error: "Unexpected server error." });
     }
-  }
-);
 
-/* -------------------------------------------------------------------------- */
-/*  Text‑to‑speech endpoint (optional to the “one free” limit)                */
-/* -------------------------------------------------------------------------- */
+    const story = await generateStory(req.body);
+
+    if (!STORY_LIMIT_DISABLED) {
+      await markStoryUsed(sessionId, ip);
+    }
+
+    return res.status(200).json(story);
+  } catch (err: any) {
+    console.error("Error generating story:", err);
+    return res.status(500).json({ error: err.message ?? "Unexpected error" });
+  }
+});
+
+/* ---------------- TTS ---------------- */
 app.post("/tts", async (req: Request, res: Response) => {
   try {
     const { text, voice = "alloy", language = "English" } = req.body;
     const audioUrl = await generateSpeech(text, voice, language);
-    return res.status(200).json({ audioUrl });
-  } catch (err: unknown) {
-    console.error("TTS error:", err);
-    return res.status(500).json({ error: "Failed to generate speech." });
+    res.status(200).json({ audioUrl });
+  } catch (err: any) {
+    console.error("Error generating speech:", err);
+    res.status(500).json({ error: err.message ?? "Unexpected error" });
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/*  Available voices helper                                                   */
-/* -------------------------------------------------------------------------- */
-app.get("/voices", (_req: Request, res: Response) => {
-  return res.status(200).json({ voices: VOICES });
+app.get("/voices", (_req: Request, res: Response) => res.status(200).json({ voices: VOICES }));
+
+/* ---------------- Global error handler ---------------- */
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
 });
 
-/* -------------------------------------------------------------------------- */
-/*  Centralised error handler (last piece of middleware)                      */
-/* -------------------------------------------------------------------------- */
-app.use(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error("Unhandled error:", err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-);
-
-/* -------------------------------------------------------------------------- */
-/*  Start the HTTP server (Fly.io needs 0.0.0.0)                              */
-/* -------------------------------------------------------------------------- */
+/* ---------------- Start server ---------------- */
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🛫  Backend running on http://0.0.0.0:${PORT}`);
+  console.log(`🛫  backend listening on http://0.0.0.0:${PORT}`);
 });

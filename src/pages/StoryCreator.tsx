@@ -1,17 +1,16 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025‑04‑18  (FULL FILE — no barrel imports)
+// StoryCreator.tsx  •  2025‑04‑18  (FULL FILE — uses Fly backend, no Supabase Edge)
 // -----------------------------------------------------------------------------
 import React, { useState, KeyboardEvent } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
-/* ─────────── UI components (individual imports) ─────────── */
+/* ─────────── UI components ─────────── */
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -148,16 +147,16 @@ const StoryCreator: React.FC = () => {
     },
   });
 
-  /* ---- mutations ---- */
+  /* ---- mutations (hit Fly backend) ---- */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
-      const { error, data: res } = await supabase.functions.invoke(
-        "anthropic-generate-story",
-        { body: data },
-      );
-      if (error) throw new Error(error.message);
-      if (res?.error) throw new Error(res.error);
-      return { story: res.story as string, title: res.title as string };
+      const resp = await fetch("/generate-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      return (await resp.json()) as { story: string; title: string };
     },
     onSuccess: ({ story, title }) => {
       setStoryContent(story);
@@ -174,12 +173,14 @@ const StoryCreator: React.FC = () => {
 
   const generateAudio = useMutation({
     mutationFn: async ({ text, voiceId }: { text: string; voiceId: string }) => {
-      const { error, data } = await supabase.functions.invoke("openai-tts", {
-        body: { text, voiceId, language: selectedLanguage },
+      const resp = await fetch("/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: voiceId, language: selectedLanguage }),
       });
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-      return data.audioUrl as string;
+      if (!resp.ok) throw new Error(await resp.text());
+      const { audioUrl } = (await resp.json()) as { audioUrl: string };
+      return audioUrl;
     },
     onSuccess: (url) => {
       setGeneratedAudioUrl(url);
@@ -246,18 +247,18 @@ const StoryCreator: React.FC = () => {
                   <CardHeader>
                     <CardTitle>Story Outline</CardTitle>
                     <CardDescription>
-                      Fill in a few details—suggestions appear while you type.
+                      Fill in the required fields below.
                     </CardDescription>
                   </CardHeader>
 
                   <CardContent className="space-y-6">
-                    {/* title */}
+                    {/* title (optional) */}
                     <FormField
                       control={form.control}
                       name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Story Title (optional)</FormLabel>
+                          <FormLabel>Story Title</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="The Great Treehouse Adventure"
@@ -268,13 +269,15 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    {/* theme */}
+                    {/* theme (required) */}
                     <FormField
                       control={form.control}
                       name="theme"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Theme / Genre</FormLabel>
+                          <FormLabel>
+                            Theme / Genre <span className="text-red-500">*</span>
+                          </FormLabel>
                           <FormControl>
                             <>
                               <Input
@@ -294,13 +297,16 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    {/* length */}
+                    {/* length (required) */}
                     <FormField
                       control={form.control}
                       name="length"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Approximate Length (minutes)</FormLabel>
+                          <FormLabel>
+                            Approximate Length (minutes){" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
                           <RadioGroup
                             className="flex flex-wrap gap-3"
                             value={String(field.value)}
@@ -319,7 +325,7 @@ const StoryCreator: React.FC = () => {
                                     htmlFor={`len-${len}`}
                                     className={
                                       disabled
-                                        ? "ml-1 text-muted-foreground line-through"
+                                        ? "ml-1 text-muted-foreground"
                                         : "ml-1"
                                     }
                                   >
@@ -336,22 +342,21 @@ const StoryCreator: React.FC = () => {
                                 to="/signup"
                                 className="text-primary underline"
                               >
-                                Sign up
-                              </Link>{" "}
-                              for unlimited lengths.
+                                Sign Up For Longer Tales
+                              </Link>
                             </p>
                           )}
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* main character */}
+                    {/* main character (optional) */}
                     <FormField
                       control={form.control}
                       name="mainCharacter"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Main Character (optional)</FormLabel>
+                          <FormLabel>Main Character</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
@@ -362,13 +367,13 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    {/* educational focus */}
+                    {/* educational focus (optional) */}
                     <FormField
                       control={form.control}
                       name="educationalFocus"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Educational Focus (optional)</FormLabel>
+                          <FormLabel>Educational Focus</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
@@ -379,13 +384,13 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-                    {/* special requests */}
+                    {/* special requests (optional) */}
                     <FormField
                       control={form.control}
                       name="additionalInstructions"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Special Requests (optional)</FormLabel>
+                          <FormLabel>Special Requests</FormLabel>
                           <FormControl>
                             <Textarea rows={4} {...field} />
                           </FormControl>
@@ -444,16 +449,19 @@ const StoryCreator: React.FC = () => {
                     <div>
                       <Label className="mb-1 block">Preview</Label>
                       <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
-                        {storyContent.split("\n").map((p, i) => (
-                          <p key={i}>{p}</p>
-                        ))}
+                        {storyContent
+                          .split("\n")
+                          .map((p) => p.replace(/^#\s+/, "")) // drop markdown #
+                          .map((p, i) => (
+                            <p key={i}>{p}</p>
+                          ))}
                       </article>
                     </div>
                   </CardContent>
                   <CardFooter>
                     <Button
                       type="button"
-                      className="ml-auto"
+                      className="ml-auto bg-storytime-blue text-white"
                       onClick={() => setActiveTab("voice")}
                     >
                       Continue to Voice & Audio

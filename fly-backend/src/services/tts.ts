@@ -1,36 +1,38 @@
 // -----------------------------------------------------------------------------
-// tts.ts  • 2025‑04‑18   (FULL FILE – no external uuid dependency)
+// services/tts.ts  • 2025‑04‑18  (FULL FILE)
+// -----------------------------------------------------------------------------
+// uuid → crypto.randomUUID   → no external dependency, no crash
 // -----------------------------------------------------------------------------
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import path from "path";
 import { tmpdir } from "os";
 import fs from "fs/promises";
-import { randomUUID } from "crypto";   // ← built‑in
+import { randomUUID } from "crypto";   // built‑in
 import fetch from "node-fetch";
 
-/* locate ffmpeg binary ------------------------------------------------------ */
+/* bind static ffmpeg binary */
 ffmpeg.setFfmpegPath(
   typeof ffmpegStatic === "string"
     ? ffmpegStatic
     : (ffmpegStatic as unknown as string),
 );
 
-/* public voice list --------------------------------------------------------- */
+/* voices */
 export const VOICES = [
-  "alloy", "ash", "ballad", "coral", "echo",
-  "fable", "nova", "onyx", "sage", "shimmer",
+  "alloy","ash","ballad","coral","echo",
+  "fable","nova","onyx","sage","shimmer",
 ] as const;
 export type VoiceId = (typeof VOICES)[number];
 
-/* main helper ----------------------------------------------------------------*/
+/* main helper */
 export async function generateSpeech(
   text: string,
   voice: VoiceId,
   language = "English",
 ): Promise<string> {
-  /* ---- 1. call OpenAI TTS and get raw WAV --------------------------------- */
-  const apiResp = await fetch("https://api.openai.com/v1/audio/speech", {
+  /* 1. call OpenAI TTS (WAV) */
+  const r = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -44,38 +46,30 @@ export async function generateSpeech(
       format: "wav",
     }),
   });
+  if (!r.ok) throw new Error(`OpenAI TTS failed: ${await r.text()}`);
+  const wavBuf = Buffer.from(await r.arrayBuffer());
 
-  if (!apiResp.ok) {
-    const err = await apiResp.text();
-    throw new Error(`OpenAI TTS failed: ${err}`);
-  }
-  const wavBuffer = Buffer.from(await apiResp.arrayBuffer());
-
-  /* ---- 2. convert WAV → MP3 via ffmpeg ------------------------------------ */
+  /* 2. convert WAV → MP3 */
   const uid = randomUUID();
-  const tmpFolder = path.join(tmpdir(), "storytime_tts_tmp");
-  const wavPath = path.join(tmpFolder, `${uid}.wav`);
-  const mp3Path = path.join(tmpFolder, `${uid}.mp3`);
+  const dir = path.join(tmpdir(), "storytime_tts_tmp");
+  const wav = path.join(dir, `${uid}.wav`);
+  const mp3 = path.join(dir, `${uid}.mp3`);
 
-  await fs.mkdir(tmpFolder, { recursive: true });
-  await fs.writeFile(wavPath, wavBuffer);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(wav, wavBuf);
 
-  await new Promise<void>((resolve, reject) => {
-    ffmpeg()
-      .input(wavPath)
-      .audioCodec("libmp3lame")
-      .format("mp3")
-      .save(mp3Path)
-      .on("end", () => resolve())   // stdout/stderr ignored
-      .on("error", reject);
+  await new Promise<void>((res, rej) => {
+    ffmpeg().input(wav).audioCodec("libmp3lame").format("mp3").save(mp3)
+      .on("end", () => res())
+      .on("error", rej);
   });
 
-  /* ---- 3. return MP3 as base64 data‑URL (swap with S3/R2 upload in prod) -- */
-  const mp3Buf = await fs.readFile(mp3Path);
+  /* 3. return base64 data‑URL (swap for real upload later) */
+  const mp3Buf = await fs.readFile(mp3);
   const dataUrl = `data:audio/mpeg;base64,${mp3Buf.toString("base64")}`;
 
-  /* ---- 4. cleanup (best‑effort) ------------------------------------------ */
-  fs.rm(tmpFolder, { recursive: true, force: true }).catch(() => {});
+  /* 4. cleanup */
+  fs.rm(dir, { recursive: true, force: true }).catch(() => {});
 
   return dataUrl;
 }

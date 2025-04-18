@@ -1,100 +1,75 @@
-/**
- * index.ts • 2025‑04‑18  (FULL FILE)
- * --------------------------------------------------------------------------
- * • CORS enabled for https://yourstorytime.vercel.app  (or ENV override)
- * • One‑free‑story gate TEMPORARILY DISABLED
- * • All other behaviour unchanged
- * --------------------------------------------------------------------------
- */
+// -----------------------------------------------------------------------------
+// services/tts.ts  • 2025‑04‑18  (FULL FILE)
+// -----------------------------------------------------------------------------
+// uuid → crypto.randomUUID   → no external dependency, no crash
+// -----------------------------------------------------------------------------
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
+import path from "path";
+import { tmpdir } from "os";
+import fs from "fs/promises";
+import { randomUUID } from "crypto";   // built‑in
+import fetch from "node-fetch";
 
-import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
-import rateLimit from "express-rate-limit";
-import morgan from "morgan";
-import helmet from "helmet";
-import cors from "cors";
-
-import { generateStory } from "./services/story.js";
-import { generateSpeech, VOICES } from "./services/tts.js";
-
-const PORT = Number(process.env.PORT) || 8080;
-
-/* ────────── Express app ────────── */
-const app = express();
-
-/* ----------- security / logging / rate‑limit ----------- */
-app.use(helmet());
-app.use(
-  cors({
-    origin:
-      process.env.CORS_ORIGIN ??
-      "https://yourstorytime.vercel.app", // <‑‑ default front‑end origin
-  }),
-);
-app.use(express.json({ limit: "2mb" }));
-app.use(
-  morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"),
-);
-app.use(
-  rateLimit({
-    windowMs: 60_000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-  }),
+/* bind static ffmpeg binary */
+ffmpeg.setFfmpegPath(
+  typeof ffmpegStatic === "string"
+    ? ffmpegStatic
+    : (ffmpegStatic as unknown as string),
 );
 
-/* ---------------- healthcheck ---------------- */
-app.get("/health", (_req, res) => res.status(200).send("ok"));
+/* voices */
+export const VOICES = [
+  "alloy","ash","ballad","coral","echo",
+  "fable","nova","onyx","sage","shimmer",
+] as const;
+export type VoiceId = (typeof VOICES)[number];
 
-/* ---------------- story generation ---------------- */
-app.post("/generate-story", async (req: Request, res: Response) => {
-  try {
-    /* ❗️ free‑story limit disabled for testing */
-    const story = await generateStory(req.body);
-    /* no markStoryUsed — unlimited stories */
-    return res.status(200).json(story);
-  } catch (err: any) {
-    console.error("Error generating story:", err);
-    return res
-      .status(500)
-      .json({ error: err.message ?? "Unexpected error" });
-  }
-});
+/* main helper */
+export async function generateSpeech(
+  text: string,
+  voice: VoiceId,
+  language = "English",
+): Promise<string> {
+  /* 1. call OpenAI TTS (WAV) */
+  const r = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "tts-1",
+      voice,
+      input: text,
+      language,
+      format: "wav",
+    }),
+  });
+  if (!r.ok) throw new Error(`OpenAI TTS failed: ${await r.text()}`);
+  const wavBuf = Buffer.from(await r.arrayBuffer());
 
-/* ---------------- TTS ---------------- */
-app.post("/tts", async (req: Request, res: Response) => {
-  try {
-    const { text, voice = "alloy", language = "English" } = req.body;
-    const audioUrl = await generateSpeech(text, voice, language);
-    res.status(200).json({ audioUrl });
-  } catch (err: any) {
-    console.error("Error generating speech:", err);
-    res
-      .status(500)
-      .json({ error: err.message ?? "Unexpected error" });
-  }
-});
+  /* 2. convert WAV → MP3 */
+  const uid = randomUUID();
+  const dir = path.join(tmpdir(), "storytime_tts_tmp");
+  const wav = path.join(dir, `${uid}.wav`);
+  const mp3 = path.join(dir, `${uid}.mp3`);
 
-/* ---------------- voices list ---------------- */
-app.get("/voices", (_req: Request, res: Response) =>
-  res.status(200).json({ voices: VOICES }),
-);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(wav, wavBuf);
 
-/* ---------------- global error handler ---------------- */
-app.use(
-  (
-    err: unknown,
-    _req: Request,
-    res: Response,
-    _next: NextFunction,
-  ) => {
-    console.error("Unhandled error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  },
-);
+  await new Promise<void>((res, rej) => {
+    ffmpeg().input(wav).audioCodec("libmp3lame").format("mp3").save(mp3)
+      .on("end", () => res())
+      .on("error", rej);
+  });
 
-/* ---------------- start server ---------------- */
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🛫  backend listening on http://0.0.0.0:${PORT}`);
-});
+  /* 3. return base64 data‑URL (swap for real upload later) */
+  const mp3Buf = await fs.readFile(mp3);
+  const dataUrl = `data:audio/mpeg;base64,${mp3Buf.toString("base64")}`;
+
+  /* 4. cleanup */
+  fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+
+  return dataUrl;
+}

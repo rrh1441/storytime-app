@@ -1,20 +1,20 @@
-// Remove the 'ts' at the beginning of the file
-import OpenAI from "openai";
-import { chunkText } from "../utils/chunk.js";
+// -----------------------------------------------------------------------------
+// tts.ts  • 2025‑04‑18
+// -----------------------------------------------------------------------------
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegPath from "ffmpeg-static";
+import ffmpegStatic from "ffmpeg-static";
+import path from "path";
+import { tmpdir } from "os";
 import fs from "fs/promises";
-import { createClient } from "@supabase/supabase-js";
-import crypto from "node:crypto";
+import { v4 as uuidv4 } from "uuid";
+import fetch from "node-fetch";
 
-// Fix the ffmpeg path assignment by adding a type assertion
-ffmpeg.setFfmpegPath(ffmpegPath as string);
-
-const openai = new OpenAI();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const bucket = process.env.SUPABASE_BUCKET ?? "story_assets";
-const supabase = createClient(supabaseUrl!, supabaseKey!);
+// ── bind static binary ──
+ffmpeg.setFfmpegPath(
+  typeof ffmpegStatic === "string"
+    ? ffmpegStatic
+    : (ffmpegStatic as unknown as string),
+);
 
 export const VOICES = [
   "alloy",
@@ -28,43 +28,61 @@ export const VOICES = [
   "sage",
   "shimmer",
 ] as const;
+export type VoiceId = (typeof VOICES)[number];
 
-export async function generateSpeech(text: string, voice: string, language: string): Promise<string> {
-  if (!VOICES.includes(voice as any)) throw new Error("Unsupported voice");
-  const chunks = chunkText(text);
-  const tmp: string[] = [];
-  
-  // synthesize sequentially to stay inside rate limits
-  for (const [i, piece] of chunks.entries()) {
-    // Remove the format parameter which is causing the type error
-    const resp = await openai.audio.speech.create({ 
-      model: "gpt-4o-mini-tts", 
-      voice, 
-      input: piece 
-      // Remove format: "mp3" as it's not in the expected type
-    });
-    
-    const arr = Buffer.from(await resp.arrayBuffer());
-    const fn = `/tmp/seg_${i}.mp3`;
-    await fs.writeFile(fn, arr);
-    tmp.push(fn);
-  }
-  
-  const final = `/tmp/${crypto.randomUUID()}.mp3`;
-  
-  await new Promise<void>((resolve, reject) => {
-    const cmd = ffmpeg();
-    tmp.forEach((p) => cmd.input(p));
-    // Fix the error/end handler syntax for ffmpeg
-    cmd
-      .on("error", (err) => reject(err))
-      .on("end", () => resolve())
-      .mergeToFile(final);
+export async function generateSpeech(
+  text: string,
+  voice: VoiceId,
+  language = "English",
+): Promise<string> {
+  /* ---- OpenAI request ---- */
+  const apiResp = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "tts-1",
+      voice,
+      input: text,
+      language,
+      format: "wav",
+    }),
   });
-  
-  const filePath = `audio/${crypto.randomUUID()}.mp3`;
-  const data = await fs.readFile(final);
-  const { error } = await supabase.storage.from(bucket).upload(filePath, data, { contentType: "audio/mpeg" });
-  if (error) throw error;
-  return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl;
+
+  if (!apiResp.ok) {
+    const err = await apiResp.text();
+    throw new Error(`OpenAI TTS failed: ${err}`);
+  }
+
+  const wavBuffer = Buffer.from(await apiResp.arrayBuffer());
+
+  /* ---- convert WAV → MP3 ---- */
+  const uid = uuidv4();
+  const tmpFolder = path.join(tmpdir(), "storytime_tts_tmp");
+  const wavPath = path.join(tmpFolder, `${uid}.wav`);
+  const mp3Path = path.join(tmpFolder, `${uid}.mp3`);
+
+  await fs.mkdir(tmpFolder, { recursive: true });
+  await fs.writeFile(wavPath, wavBuffer);
+
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg()
+      .input(wavPath)
+      .audioCodec("libmp3lame")
+      .format("mp3")
+      .save(mp3Path)
+      // 👇 wrap resolve so the types match (stdout, stderr are ignored)
+      .on("end", () => resolve())
+      .on("error", (err) => reject(err));
+  });
+
+  /* ---- return as base64 data‑URL (swap with real upload in prod) ---- */
+  const mp3Buf = await fs.readFile(mp3Path);
+  const dataUrl = `data:audio/mpeg;base64,${mp3Buf.toString("base64")}`;
+
+  fs.rm(tmpFolder, { recursive: true, force: true }).catch(() => {});
+
+  return dataUrl;
 }

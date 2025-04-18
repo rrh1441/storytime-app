@@ -1,0 +1,35 @@
+app = "storytime-app"           # ← reuse the app you already created
+primary_region = "sea"
+kill_signal     = "SIGINT"
+kill_timeout    = "5s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"                 # Express listens here
+
+# ──►  Scale‑to‑zero / cold‑start controls
+[experimental]
+  auto_start_machines = true    # wake on first request
+  auto_stop_machines  = true    # hibernate after ≈5 min idle
+  # auto_stop_machines_idle_timeout = 300   # seconds (optional override)
+
+[[services]]
+  internal_port = 8080
+  protocol      = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port     = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port     = 443
+
+  # Health‑check so Fly restarts the Machine if it crashes
+  [[services.checks]]
+    type     = "http"
+    interval = "30s"
+    timeout  = "5s"
+    path     = "/health"

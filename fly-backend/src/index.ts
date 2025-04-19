@@ -7,9 +7,10 @@ const PORT = process.env.PORT || 8080;
 
 // Enable CORS for all routes
 app.use(cors({
-  origin: ['https://storytime-app.fly.dev', 'http://localhost:5173', 'http://localhost:3000'],
+  origin: ['https://storytime-app.fly.dev', 'https://yourstorytime.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 app.use(express.json());
@@ -31,7 +32,7 @@ app.post('/generate-story', async (req, res) => {
     console.log('Story generation request received:', req.body);
     // Your story generation logic here
     // This is a placeholder that matches the expected response format
-    res.json({ 
+    res.json({
       story: "Once upon a time in a magical forest, there lived a little fox named Ruby. Ruby had bright orange fur and a bushy tail that she was very proud of. Every day, she would explore the forest, making friends with all the creatures she met along the way.",
       title: req.body.storyTitle || "The Adventures of Ruby Fox"
     });

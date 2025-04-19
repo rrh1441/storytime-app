@@ -1,75 +1,75 @@
-// -----------------------------------------------------------------------------
-// services/tts.ts  • 2025‑04‑18  (FULL FILE)
-// -----------------------------------------------------------------------------
-// uuid → crypto.randomUUID   → no external dependency, no crash
-// -----------------------------------------------------------------------------
-import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
-import path from "path";
-import { tmpdir } from "os";
-import fs from "fs/promises";
-import { randomUUID } from "crypto";   // built‑in
-import fetch from "node-fetch";
+import express from 'express';
+import cors from 'cors';
+import { VOICES, generateSpeech } from './services/tts.js';
 
-/* bind static ffmpeg binary */
-ffmpeg.setFfmpegPath(
-  typeof ffmpegStatic === "string"
-    ? ffmpegStatic
-    : (ffmpegStatic as unknown as string),
-);
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-/* voices */
-export const VOICES = [
-  "alloy","ash","ballad","coral","echo",
-  "fable","nova","onyx","sage","shimmer",
-] as const;
-export type VoiceId = (typeof VOICES)[number];
+// Enable CORS for all routes
+app.use(cors({
+  origin: ['https://storytime-app.fly.dev', 'http://localhost:5173', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-/* main helper */
-export async function generateSpeech(
-  text: string,
-  voice: VoiceId,
-  language = "English",
-): Promise<string> {
-  /* 1. call OpenAI TTS (WAV) */
-  const r = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "tts-1",
-      voice,
-      input: text,
-      language,
-      format: "wav",
-    }),
-  });
-  if (!r.ok) throw new Error(`OpenAI TTS failed: ${await r.text()}`);
-  const wavBuf = Buffer.from(await r.arrayBuffer());
+app.use(express.json());
 
-  /* 2. convert WAV → MP3 */
-  const uid = randomUUID();
-  const dir = path.join(tmpdir(), "storytime_tts_tmp");
-  const wav = path.join(dir, `${uid}.wav`);
-  const mp3 = path.join(dir, `${uid}.mp3`);
+// Log all requests for debugging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
 
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(wav, wavBuf);
+// Basic health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
-  await new Promise<void>((res, rej) => {
-    ffmpeg().input(wav).audioCodec("libmp3lame").format("mp3").save(mp3)
-      .on("end", () => res())
-      .on("error", rej);
-  });
+// Story generation endpoint - MATCHED TO FRONTEND
+app.post('/generate-story', async (req, res) => {
+  try {
+    console.log('Story generation request received:', req.body);
+    // Your story generation logic here
+    // This is a placeholder that matches the expected response format
+    res.json({ 
+      story: "Once upon a time in a magical forest, there lived a little fox named Ruby. Ruby had bright orange fur and a bushy tail that she was very proud of. Every day, she would explore the forest, making friends with all the creatures she met along the way.",
+      title: req.body.storyTitle || "The Adventures of Ruby Fox"
+    });
+  } catch (error) {
+    console.error('Story generation error:', error);
+    res.status(500).json({ error: 'Failed to generate story' });
+  }
+});
 
-  /* 3. return base64 data‑URL (swap for real upload later) */
-  const mp3Buf = await fs.readFile(mp3);
-  const dataUrl = `data:audio/mpeg;base64,${mp3Buf.toString("base64")}`;
+// TTS endpoint - MATCHED TO FRONTEND
+app.post('/tts', async (req, res) => {
+  try {
+    const { text, voice, language = "English" } = req.body;
+    
+    if (!text || !voice) {
+      return res.status(400).json({ error: 'Text and voice are required' });
+    }
+    
+    if (!VOICES.includes(voice)) {
+      return res.status(400).json({ error: 'Invalid voice' });
+    }
+    
+    const audioDataUrl = await generateSpeech(text, voice, language);
+    // Note: The frontend expects audioUrl, not audio
+    res.json({ audioUrl: audioDataUrl });
+  } catch (error) {
+    console.error('TTS error:', error);
+    res.status(500).json({ error: 'Failed to generate speech' });
+  }
+});
 
-  /* 4. cleanup */
-  fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
 
-  return dataUrl;
-}
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});

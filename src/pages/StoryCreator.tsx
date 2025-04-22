@@ -1,14 +1,14 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025‑04‑18 (updated 2025‑04‑22)
+// StoryCreator.tsx  •  2025‑04‑18  (last updated 2025‑04‑22)
 // -----------------------------------------------------------------------------
-// • Added required Language field to Story Outline tab
-// • Removed separate language input from Voice & Audio tab
-// • /tts now receives validated language from form values
-// • Minimal diff – other behaviour, imports, styling unchanged
+// • Language field added to Story Outline tab (required, validated)
+// • Voice & Audio tab now uses six friendly voice names (Alex, Ethan, Felix,
+//   Nora, Oscar, Selina) that map to OpenAI voices alloy, echo, fable, nova,
+//   onyx, shimmer
 // -----------------------------------------------------------------------------
 
 import React, { useState, KeyboardEvent } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation } from "@tanstack/react-query";
@@ -17,99 +17,178 @@ import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { API_BASE } from "@/lib/apiBase";
 
-/* ─────────── UI ─────────── */
+/* ─────────── UI components ─────────── */
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Tabs, TabsContent, TabsList, TabsTrigger,
-} from "@/components/ui/tabs";
-import {
-  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import {
-  Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent,
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  Alert, AlertDescription, AlertTitle,
-} from "@/components/ui/alert";
-import {
-  Dialog, DialogTrigger, DialogContent, DialogHeader,
-  DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  RadioGroup, RadioGroupItem,
-} from "@/components/ui/radio-group";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 
 /* ─────────── Icons ─────────── */
 import {
-  Sparkles, Edit, Headphones, Share2, PenTool, Loader2,
-  AlertCircle, Mic,
+  Sparkles,
+  Edit,
+  Headphones,
+  Share2,
+  PenTool,
+  Loader2,
+  AlertCircle,
+  Mic,
 } from "lucide-react";
 
 /* ─────────── Static data ─────────── */
 const THEME_SUGGESTIONS = [
-  "Adventure", "Friendship", "Magic", "Space", "Animals", "Kindness",
-] as const;
-const LENGTH_OPTIONS = [3, 5, 10, 15, 30, 60] as const;
-const SUPPORTED_VOICES = [
-  { id: "alloy",   label: "Alex (US • Neutral Male)" },
-  { id: "ash",     label: "Aisha (US • Warm Female)" },
-  { id: "ballad",  label: "Bella (UK • Lyrical Female)" },
-  { id: "coral",   label: "Chloe (AU • Bright Female)" },
-  { id: "echo",    label: "Ethan (US • Friendly Male)" },
-  { id: "fable",   label: "Felix (UK • Storyteller Male)" },
-  { id: "nova",    label: "Nora (US • Energetic Female)" },
-  { id: "onyx",    label: "Oscar (US • Deep Male)" },
-  { id: "sage",    label: "Saanvi (IN • Clear Female)" },
-  { id: "shimmer", label: "Selina (US • Expressive Female)"},
-] as const;
-const SUPPORTED_LANGUAGES = [
-  "Afrikaans","Arabic","Armenian","Azerbaijani","Belarusian","Bosnian","Bulgarian",
-  "Catalan","Chinese","Croatian","Czech","Danish","Dutch","English","Estonian",
-  "Finnish","French","Galician","German","Greek","Hebrew","Hindi","Hungarian",
-  "Icelandic","Indonesian","Italian","Japanese","Kannada","Kazakh","Korean",
-  "Latvian","Lithuanian","Macedonian","Malay","Marathi","Maori","Nepali",
-  "Norwegian","Persian","Polish","Portuguese","Romanian","Russian","Serbian",
-  "Slovak","Slovenian","Spanish","Swahili","Swedish","Tagalog","Tamil","Thai",
-  "Turkish","Ukrainian","Urdu","Vietnamese","Welsh",
+  "Adventure",
+  "Friendship",
+  "Magic",
+  "Space",
+  "Animals",
+  "Kindness",
 ] as const;
 
-/* ─────────── Schema ─────────── */
+const LENGTH_OPTIONS = [3, 5, 10, 15, 30, 60] as const;
+
+/**
+ * The six friendly names shown in the UI.
+ * id  → OpenAI voice ID   •   label → user‑visible string
+ */
+const SUPPORTED_VOICES = [
+  { id: "alloy",   label: "Alex (US)"   }, // alloy
+  { id: "echo",    label: "Ethan (US)"  }, // echo
+  { id: "fable",   label: "Felix (UK)"  }, // fable
+  { id: "nova",    label: "Nora (US)"   }, // nova
+  { id: "onyx",    label: "Oscar (US)"  }, // onyx
+  { id: "shimmer", label: "Selina (US)" }, // shimmer
+] as const;
+
+const SUPPORTED_LANGUAGES = [
+  "Afrikaans",
+  "Arabic",
+  "Armenian",
+  "Azerbaijani",
+  "Belarusian",
+  "Bosnian",
+  "Bulgarian",
+  "Catalan",
+  "Chinese",
+  "Croatian",
+  "Czech",
+  "Danish",
+  "Dutch",
+  "English",
+  "Estonian",
+  "Finnish",
+  "French",
+  "Galician",
+  "German",
+  "Greek",
+  "Hebrew",
+  "Hindi",
+  "Hungarian",
+  "Icelandic",
+  "Indonesian",
+  "Italian",
+  "Japanese",
+  "Kannada",
+  "Kazakh",
+  "Korean",
+  "Latvian",
+  "Lithuanian",
+  "Macedonian",
+  "Malay",
+  "Marathi",
+  "Maori",
+  "Nepali",
+  "Norwegian",
+  "Persian",
+  "Polish",
+  "Portuguese",
+  "Romanian",
+  "Russian",
+  "Serbian",
+  "Slovak",
+  "Slovenian",
+  "Spanish",
+  "Swahili",
+  "Swedish",
+  "Tagalog",
+  "Tamil",
+  "Thai",
+  "Turkish",
+  "Ukrainian",
+  "Urdu",
+  "Vietnamese",
+  "Welsh",
+] as const;
+
+/* ─────────── Zod schema ─────────── */
 const schema = z.object({
   storyTitle: z.string().max(150).optional().nullable(),
   theme: z.string().min(1, "Theme is required."),
   length: z.number().min(3).max(60),
-  language: z.string().refine((val) => (SUPPORTED_LANGUAGES as readonly string[]).includes(val), {
-    message: "Unsupported language",
-  }),
+  language: z
+    .string()
+    .refine(
+      (val) => (SUPPORTED_LANGUAGES as readonly string[]).includes(val),
+      { message: "Unsupported language" },
+    ),
   mainCharacter: z.string().max(50).optional().nullable(),
   educationalFocus: z.string().optional().nullable(),
   additionalInstructions: z.string().max(500).optional().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
 
+/* ─────────── Component ─────────── */
 const StoryCreator: React.FC = () => {
   const { user } = useAuth();
   const isSubscriber = Boolean(user?.user_metadata?.subscriber);
 
   const [storyContent, setStoryContent] = useState("");
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(
+    null,
+  );
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
-  const [activeTab, setActiveTab] =
-    useState<"parameters" | "edit" | "voice" | "share">("parameters");
+  const [activeTab, setActiveTab] = useState<
+    "parameters" | "edit" | "voice" | "share"
+  >("parameters");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { storyTitle: "", theme: "", length: 3, language: "English" },
+    defaultValues: {
+      storyTitle: "",
+      theme: "",
+      length: 3,
+      language: "English",
+    },
     mode: "onBlur",
   });
 
-  /* ---- mutations ---- */
+  /* ── mutations ────────────────────────────────────────────────────────── */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
       const r = await fetch(`${API_BASE}/generate-story`, {
@@ -126,11 +205,21 @@ const StoryCreator: React.FC = () => {
       setActiveTab("edit");
     },
     onError: (e: Error) =>
-      toast({ title: "Generation failed", description: e.message, variant: "destructive" }),
+      toast({
+        title: "Generation failed",
+        description: e.message,
+        variant: "destructive",
+      }),
   });
 
   const generateAudio = useMutation({
-    mutationFn: async ({ text, voiceId }: { text: string; voiceId: string }) => {
+    mutationFn: async ({
+      text,
+      voiceId,
+    }: {
+      text: string;
+      voiceId: string;
+    }) => {
       const language = form.getValues("language");
       const r = await fetch(`${API_BASE}/tts`, {
         method: "POST",
@@ -140,12 +229,19 @@ const StoryCreator: React.FC = () => {
       if (!r.ok) throw new Error(await r.text());
       return (await r.json()).audioUrl as string;
     },
-    onSuccess: (url) => { setGeneratedAudioUrl(url); setActiveTab("share"); },
+    onSuccess: (url) => {
+      setGeneratedAudioUrl(url);
+      setActiveTab("share");
+    },
     onError: (e: Error) =>
-      toast({ title: "Audio failed", description: e.message, variant: "destructive" }),
+      toast({
+        title: "Audio failed",
+        description: e.message,
+        variant: "destructive",
+      }),
   });
 
-  /* ---- helpers ---- */
+  /* ── helpers ──────────────────────────────────────────────────────────── */
   const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     const match = THEME_SUGGESTIONS.find((t) =>
@@ -153,10 +249,13 @@ const StoryCreator: React.FC = () => {
     );
     if (match) form.setValue("theme", match);
   };
-  const addLen = (form.watch("additionalInstructions") || "").length;
+
+  const additionalChars = (
+    form.watch("additionalInstructions") || ""
+  ).length;
   const watchLanguage = form.watch("language");
 
-  /* ---- UI ---- */
+  /* ── UI ───────────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
@@ -166,39 +265,68 @@ const StoryCreator: React.FC = () => {
 
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as any)}
+              className="space-y-6"
+            >
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4" />Story Outline</TabsTrigger>
-                <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4" />Edit / Preview</TabsTrigger>
-                <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4" />Voice & Audio</TabsTrigger>
-                <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4" />Share Story</TabsTrigger>
+                <TabsTrigger value="parameters">
+                  <PenTool className="mr-1 h-4 w-4" />
+                  Story Outline
+                </TabsTrigger>
+                <TabsTrigger value="edit" disabled={!storyContent}>
+                  <Edit className="mr-1 h-4 w-4" />
+                  Edit / Preview
+                </TabsTrigger>
+                <TabsTrigger value="voice" disabled={!storyContent}>
+                  <Headphones className="mr-1 h-4 w-4" />
+                  Voice & Audio
+                </TabsTrigger>
+                <TabsTrigger value="share" disabled={!generatedAudioUrl}>
+                  <Share2 className="mr-1 h-4 w-4" />
+                  Share Story
+                </TabsTrigger>
               </TabsList>
 
-              {/* PARAMETERS */}
+              {/* ── PARAMETERS TAB ─────────────────────────────────────── */}
               <TabsContent value="parameters">
                 <Card>
                   <CardHeader>
                     <CardTitle>Story Outline</CardTitle>
-                    <CardDescription>Fill in the required fields below.</CardDescription>
+                    <CardDescription>
+                      Fill in the required fields below.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* TITLE */}
                     <FormField
-                      control={form.control} name="storyTitle"
+                      control={form.control}
+                      name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Story Title</FormLabel>
-                          <FormControl><Input placeholder="The Great Treehouse Adventure" {...field} /></FormControl>
+                          <FormControl>
+                            <Input
+                              placeholder="The Great Treehouse Adventure"
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     {/* THEME */}
                     <FormField
-                      control={form.control} name="theme"
+                      control={form.control}
+                      name="theme"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Theme / Genre <span className="text-red-500">*</span></FormLabel>
+                          <FormLabel>
+                            Theme / Genre{" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -210,19 +338,44 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
+
                     {/* LENGTH */}
                     <FormField
-                      control={form.control} name="length"
+                      control={form.control}
+                      name="length"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Approximate Length (minutes) <span className="text-red-500">*</span></FormLabel>
-                          <RadioGroup className="flex flex-wrap gap-3" value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
+                          <FormLabel>
+                            Approximate Length (minutes){" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <RadioGroup
+                            className="flex flex-wrap gap-3"
+                            value={String(field.value)}
+                            onValueChange={(v) => field.onChange(Number(v))}
+                          >
                             {LENGTH_OPTIONS.map((len) => {
                               const disabled = !isSubscriber && len !== 3;
                               return (
-                                <div key={len} className="flex items-center">
-                                  <RadioGroupItem value={String(len)} id={`len-${len}`} disabled={disabled}/>
-                                  <Label htmlFor={`len-${len}`} className={disabled ? "ml-1 text-muted-foreground" : "ml-1"}>{len}</Label>
+                                <div
+                                  key={len}
+                                  className="flex items-center"
+                                >
+                                  <RadioGroupItem
+                                    value={String(len)}
+                                    id={`len-${len}`}
+                                    disabled={disabled}
+                                  />
+                                  <Label
+                                    htmlFor={`len-${len}`}
+                                    className={
+                                      disabled
+                                        ? "ml-1 text-muted-foreground"
+                                        : "ml-1"
+                                    }
+                                  >
+                                    {len}
+                                  </Label>
                                 </div>
                               );
                             })}
@@ -230,19 +383,28 @@ const StoryCreator: React.FC = () => {
                           {!isSubscriber && (
                             <p className="mt-1 text-xs text-muted-foreground">
                               Want to make longer tales?{" "}
-                              <Link to="/signup" className="text-primary underline">Sign Up</Link>
+                              <Link
+                                to="/signup"
+                                className="text-primary underline"
+                              >
+                                Sign Up
+                              </Link>
                             </p>
                           )}
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     {/* LANGUAGE */}
                     <FormField
-                      control={form.control} name="language"
+                      control={form.control}
+                      name="language"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Language <span className="text-red-500">*</span></FormLabel>
+                          <FormLabel>
+                            Language <span className="text-red-500">*</span>
+                          </FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -251,42 +413,64 @@ const StoryCreator: React.FC = () => {
                             />
                           </FormControl>
                           <datalist id="lang-suggestions">
-                            {SUPPORTED_LANGUAGES.map((lang) => <option key={lang} value={lang} />)}
+                            {SUPPORTED_LANGUAGES.map((lang) => (
+                              <option key={lang} value={lang} />
+                            ))}
                           </datalist>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     {/* MAIN CHARACTER */}
                     <FormField
-                      control={form.control} name="mainCharacter"
+                      control={form.control}
+                      name="mainCharacter"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Main Character</FormLabel>
-                          <FormControl><Input placeholder="e.g., Penelope, Hudson, Luna the Rabbit" {...field} /></FormControl>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     {/* EDUCATIONAL FOCUS */}
                     <FormField
-                      control={form.control} name="educationalFocus"
+                      control={form.control}
+                      name="educationalFocus"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Educational Focus</FormLabel>
-                          <FormControl><Input placeholder="e.g., Counting to 10, The Water Cycle, Being Kind" {...field} /></FormControl>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     {/* SPECIAL REQUESTS */}
                     <FormField
-                      control={form.control} name="additionalInstructions"
+                      control={form.control}
+                      name="additionalInstructions"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Special Requests</FormLabel>
-                          <FormControl><Textarea rows={4} {...field} /></FormControl>
-                          <p className="text-right text-sm text-muted-foreground">{addLen}/500</p>
+                          <FormControl>
+                            <Textarea rows={4} {...field} />
+                          </FormControl>
+                          <p className="text-right text-sm text-muted-foreground">
+                            {additionalChars}/500
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -296,8 +480,12 @@ const StoryCreator: React.FC = () => {
                     <Button
                       type="button"
                       className="w-full bg-storytime-blue text-white"
-                      disabled={generateStory.isPending || !form.formState.isValid}
-                      onClick={form.handleSubmit((d) => generateStory.mutate(d))}
+                      disabled={
+                        generateStory.isPending || !form.formState.isValid
+                      }
+                      onClick={form.handleSubmit((d) =>
+                        generateStory.mutate(d),
+                      )}
                     >
                       {generateStory.isPending ? (
                         <>
@@ -315,53 +503,83 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* EDIT / PREVIEW */}
+              {/* ── EDIT / PREVIEW TAB ─────────────────────────────────── */}
               <TabsContent value="edit">
                 <Card>
-                  <CardHeader><CardTitle>Edit & Preview</CardTitle></CardHeader>
+                  <CardHeader>
+                    <CardTitle>Edit & Preview</CardTitle>
+                  </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label htmlFor="story-editor" className="mb-1 block">Edit Text</Label>
-                      <Textarea id="story-editor" value={storyContent} onChange={(e) => setStoryContent(e.target.value)} rows={20} />
+                      <Label
+                        htmlFor="story-editor"
+                        className="mb-1 block"
+                      >
+                        Edit Text
+                      </Label>
+                      <Textarea
+                        id="story-editor"
+                        value={storyContent}
+                        onChange={(e) => setStoryContent(e.target.value)}
+                        rows={20}
+                      />
                     </div>
                     <div>
                       <Label className="mb-1 block">Preview</Label>
                       <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
                         {storyContent
                           .split("\n")
-                          .map((p) => p.replace(/^#\s+/, "")) /* strip leading markdown '#' */
+                          .map((p) => p.replace(/^#\s+/, "")) // strip leading #
                           .map((p, i) => <p key={i}>{p}</p>)}
                       </article>
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button type="button" className="ml-auto bg-storytime-blue text-white" onClick={() => setActiveTab("voice")}>Continue to Voice & Audio</Button>
+                    <Button
+                      type="button"
+                      className="ml-auto bg-storytime-blue text-white"
+                      onClick={() => setActiveTab("voice")}
+                    >
+                      Continue to Voice & Audio
+                    </Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
 
-              {/* VOICE & AUDIO */}
+              {/* ── VOICE & AUDIO TAB ─────────────────────────────────── */}
               <TabsContent value="voice">
                 <Card>
                   <CardHeader>
                     <CardTitle>Add Narration</CardTitle>
                     <CardDescription>
-                      Select voice, then generate audio. (Language: {watchLanguage})
+                      Select voice, then generate audio. (Language:{" "}
+                      {watchLanguage})
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* voice select */}
                     <div className="space-y-2">
                       <Label htmlFor="voice-select">Voice</Label>
-                      <Select value={selectedVoiceId} onValueChange={(v) => { setSelectedVoiceId(v); setGeneratedAudioUrl(null); }}>
-                        <SelectTrigger id="voice-select"><SelectValue placeholder="Choose a voice" /></SelectTrigger>
+                      <Select
+                        value={selectedVoiceId}
+                        onValueChange={(v) => {
+                          setSelectedVoiceId(v);
+                          setGeneratedAudioUrl(null);
+                        }}
+                      >
+                        <SelectTrigger id="voice-select">
+                          <SelectValue placeholder="Choose a voice" />
+                        </SelectTrigger>
                         <SelectContent>
                           {SUPPORTED_VOICES.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+
                     {/* generate audio */}
                     <Button
                       type="button"
@@ -369,16 +587,33 @@ const StoryCreator: React.FC = () => {
                       onClick={() => {
                         const langVal = form.getValues("language");
                         if (!SUPPORTED_LANGUAGES.includes(langVal)) {
-                          toast({ title: "Unsupported language", description: "Please choose a supported language.", variant: "destructive" });
+                          toast({
+                            title: "Unsupported language",
+                            description:
+                              "Please choose a supported language.",
+                            variant: "destructive",
+                          });
                           return;
                         }
                         if (storyContent && selectedVoiceId) {
-                          generateAudio.mutate({ text: storyContent, voiceId: selectedVoiceId });
+                          generateAudio.mutate({
+                            text: storyContent,
+                            voiceId: selectedVoiceId,
+                          });
                         } else {
-                          toast({ title: "Missing input", description: "Provide story text and select a voice.", variant: "destructive" });
+                          toast({
+                            title: "Missing input",
+                            description:
+                              "Provide story text and select a voice.",
+                            variant: "destructive",
+                          });
                         }
                       }}
-                      disabled={generateAudio.isPending || !selectedVoiceId || !SUPPORTED_LANGUAGES.includes(form.getValues("language"))}
+                      disabled={
+                        generateAudio.isPending ||
+                        !selectedVoiceId ||
+                        !SUPPORTED_LANGUAGES.includes(form.getValues("language"))
+                      }
                     >
                       {generateAudio.isPending ? (
                         <>
@@ -392,29 +627,43 @@ const StoryCreator: React.FC = () => {
                         </>
                       )}
                     </Button>
+
                     {generateAudio.isError && (
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>{generateAudio.error.message}</AlertDescription>
+                        <AlertDescription>
+                          {generateAudio.error.message}
+                        </AlertDescription>
                       </Alert>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              {/* SHARE */}
+              {/* ── SHARE TAB ─────────────────────────────────────────── */}
               <TabsContent value="share">
                 <Card>
-                  <CardHeader><CardTitle>Share Your Story</CardTitle></CardHeader>
+                  <CardHeader>
+                    <CardTitle>Share Your Story</CardTitle>
+                  </CardHeader>
                   <CardContent className="space-y-4">
                     {generatedAudioUrl && (
                       <>
-                        <audio controls src={generatedAudioUrl} className="w-full" />
+                        <audio
+                          controls
+                          src={generatedAudioUrl}
+                          className="w-full"
+                        />
                         <p className="text-sm text-muted-foreground">
-                          Copy the link or download the MP3 to share with friends and family.
+                          Copy the link or download the MP3 to share with
+                          friends and family.
                         </p>
-                        <Input readOnly value={generatedAudioUrl} onFocus={(e) => e.currentTarget.select()} />
+                        <Input
+                          readOnly
+                          value={generatedAudioUrl}
+                          onFocus={(e) => e.currentTarget.select()}
+                        />
                       </>
                     )}
                   </CardContent>

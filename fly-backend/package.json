@@ -19,7 +19,8 @@
         "helmet": "^7.0.0",
         "morgan": "^1.10.0",
         "openai": "^4.37.0",
-        "tiktoken": "^1.0.7"
+        "tiktoken": "^1.0.7",
+        "uuid": "^9.0.1"
     },
     "devDependencies": {
         "@types/cors": "^2.8.17",

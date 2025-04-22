@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025‑04‑18
+// StoryCreator.tsx  •  2025‑04‑18 (updated 2025‑04‑22)
 // -----------------------------------------------------------------------------
-// • Uses absolute API_BASE for Fly backend
-// • Theme field is free text (no datalist dropdown)
-// • CTA copy: “Want to make longer tales? Sign Up”
+// • Added required Language field to Story Outline tab
+// • Removed separate language input from Voice & Audio tab
+// • /tts now receives validated language from form values
+// • Minimal diff – other behaviour, imports, styling unchanged
 // -----------------------------------------------------------------------------
 
 import React, { useState, KeyboardEvent } from "react";
@@ -47,7 +48,7 @@ import {
 /* ─────────── Icons ─────────── */
 import {
   Sparkles, Edit, Headphones, Share2, PenTool, Loader2,
-  AlertCircle, Mic, Info,
+  AlertCircle, Mic,
 } from "lucide-react";
 
 /* ─────────── Static data ─────────── */
@@ -83,6 +84,9 @@ const schema = z.object({
   storyTitle: z.string().max(150).optional().nullable(),
   theme: z.string().min(1, "Theme is required."),
   length: z.number().min(3).max(60),
+  language: z.string().refine((val) => (SUPPORTED_LANGUAGES as readonly string[]).includes(val), {
+    message: "Unsupported language",
+  }),
   mainCharacter: z.string().max(50).optional().nullable(),
   educationalFocus: z.string().optional().nullable(),
   additionalInstructions: z.string().max(500).optional().nullable(),
@@ -96,13 +100,13 @@ const StoryCreator: React.FC = () => {
   const [storyContent, setStoryContent] = useState("");
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
-  const [selectedLanguage, setSelectedLanguage] = useState("English");
   const [activeTab, setActiveTab] =
     useState<"parameters" | "edit" | "voice" | "share">("parameters");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { storyTitle: "", theme: "", length: 3 },
+    defaultValues: { storyTitle: "", theme: "", length: 3, language: "English" },
+    mode: "onBlur",
   });
 
   /* ---- mutations ---- */
@@ -127,10 +131,11 @@ const StoryCreator: React.FC = () => {
 
   const generateAudio = useMutation({
     mutationFn: async ({ text, voiceId }: { text: string; voiceId: string }) => {
+      const language = form.getValues("language");
       const r = await fetch(`${API_BASE}/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: voiceId, language: selectedLanguage }),
+        body: JSON.stringify({ text, voice: voiceId, language }),
       });
       if (!r.ok) throw new Error(await r.text());
       return (await r.json()).audioUrl as string;
@@ -149,6 +154,7 @@ const StoryCreator: React.FC = () => {
     if (match) form.setValue("theme", match);
   };
   const addLen = (form.watch("additionalInstructions") || "").length;
+  const watchLanguage = form.watch("language");
 
   /* ---- UI ---- */
   return (
@@ -231,6 +237,26 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
+                    {/* LANGUAGE */}
+                    <FormField
+                      control={form.control} name="language"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Language <span className="text-red-500">*</span></FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              list="lang-suggestions"
+                              placeholder="English, Spanish, French…"
+                            />
+                          </FormControl>
+                          <datalist id="lang-suggestions">
+                            {SUPPORTED_LANGUAGES.map((lang) => <option key={lang} value={lang} />)}
+                          </datalist>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     {/* MAIN CHARACTER */}
                     <FormField
                       control={form.control} name="mainCharacter"
@@ -309,9 +335,7 @@ const StoryCreator: React.FC = () => {
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button type="button" className="ml-auto bg-storytime-blue text-white" onClick={() => setActiveTab("voice")}>
-                      Continue to Voice & Audio
-                    </Button>
+                    <Button type="button" className="ml-auto bg-storytime-blue text-white" onClick={() => setActiveTab("voice")}>Continue to Voice & Audio</Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
@@ -321,7 +345,9 @@ const StoryCreator: React.FC = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Add Narration</CardTitle>
-                    <CardDescription>Select voice & language, then generate audio.</CardDescription>
+                    <CardDescription>
+                      Select voice, then generate audio. (Language: {watchLanguage})
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* voice select */}
@@ -336,44 +362,23 @@ const StoryCreator: React.FC = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* language */}
-                    <div className="space-y-2">
-                      <Label htmlFor="language-input" className="flex items-center gap-1">
-                        Language
-                        <Dialog>
-                          <DialogTrigger asChild><button type="button"><Info className="h-4 w-4 opacity-70" /></button></DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Supported Languages</DialogTitle>
-                              <DialogDescription>Start typing to filter.</DialogDescription>
-                            </DialogHeader>
-                            <ul className="mt-4 max-h-72 grid grid-cols-2 gap-1 overflow-y-auto pr-2 text-sm">
-                              {SUPPORTED_LANGUAGES.map((lang) => <li key={lang}>{lang}</li>)}
-                            </ul>
-                          </DialogContent>
-                        </Dialog>
-                      </Label>
-                      <Input
-                        id="language-input"
-                        list="lang-suggestions"
-                        value={selectedLanguage}
-                        onChange={(e) => setSelectedLanguage(e.target.value)}
-                        placeholder="English, Spanish, French…"
-                      />
-                      <datalist id="lang-suggestions">
-                        {SUPPORTED_LANGUAGES.map((lang) => <option key={lang} value={lang} />)}
-                      </datalist>
-                    </div>
                     {/* generate audio */}
                     <Button
                       type="button"
                       className="w-full bg-storytime-blue text-white"
-                      onClick={() =>
-                        storyContent && selectedVoiceId
-                          ? generateAudio.mutate({ text: storyContent, voiceId: selectedVoiceId })
-                          : toast({ title: "Missing input", description: "Provide story text and select a voice.", variant: "destructive" })
-                      }
-                      disabled={generateAudio.isPending || !selectedVoiceId}
+                      onClick={() => {
+                        const langVal = form.getValues("language");
+                        if (!SUPPORTED_LANGUAGES.includes(langVal)) {
+                          toast({ title: "Unsupported language", description: "Please choose a supported language.", variant: "destructive" });
+                          return;
+                        }
+                        if (storyContent && selectedVoiceId) {
+                          generateAudio.mutate({ text: storyContent, voiceId: selectedVoiceId });
+                        } else {
+                          toast({ title: "Missing input", description: "Provide story text and select a voice.", variant: "destructive" });
+                        }
+                      }}
+                      disabled={generateAudio.isPending || !selectedVoiceId || !SUPPORTED_LANGUAGES.includes(form.getValues("language"))}
                     >
                       {generateAudio.isPending ? (
                         <>

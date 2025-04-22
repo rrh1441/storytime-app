@@ -1,38 +1,58 @@
 // -----------------------------------------------------------------------------
-// services/tts.ts  • 2025‑04‑18  (FULL FILE)
+// TTS Service  •  2025‑04‑22
 // -----------------------------------------------------------------------------
-// uuid → crypto.randomUUID   → no external dependency, no crash
-// -----------------------------------------------------------------------------
+
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import path from "path";
 import { tmpdir } from "os";
 import fs from "fs/promises";
-import { randomUUID } from "crypto";   // built‑in
-import fetch from "node-fetch";
+import { randomUUID } from "crypto";
+import nodeFetch from "node-fetch"; // poly‑fill for Node <18
 
-/* bind static ffmpeg binary */
-ffmpeg.setFfmpegPath(
-  typeof ffmpegStatic === "string"
-    ? ffmpegStatic
-    : (ffmpegStatic as unknown as string),
-);
+/*───────────────────────────────────────────────────────────────────────────
+  Fetch helper (no @ts‑expect‑error needed)
+───────────────────────────────────────────────────────────────────────────*/
+const fetchFn: typeof globalThis.fetch =
+  typeof globalThis.fetch === "function"
+    ? globalThis.fetch
+    : (nodeFetch as unknown as typeof globalThis.fetch);
 
-/* voices */
+/*───────────────────────────────────────────────────────────────────────────
+  FFmpeg configuration
+───────────────────────────────────────────────────────────────────────────*/
+const ffmpegPath = (ffmpegStatic as unknown as string) ?? "";
+if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
+
+/*───────────────────────────────────────────────────────────────────────────
+  Public API
+───────────────────────────────────────────────────────────────────────────*/
 export const VOICES = [
-  "alloy","ash","ballad","coral","echo",
-  "fable","nova","onyx","sage","shimmer",
+  "alloy",
+  "ash",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
 ] as const;
 export type VoiceId = (typeof VOICES)[number];
 
-/* main helper */
+export interface SpeechGenerationResult {
+  mp3Buffer: Buffer;
+  contentType: "audio/mpeg";
+}
+
 export async function generateSpeech(
   text: string,
   voice: VoiceId,
   language = "English",
-): Promise<string> {
-  /* 1. call OpenAI TTS (WAV) */
-  const r = await fetch("https://api.openai.com/v1/audio/speech", {
+): Promise<SpeechGenerationResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY environment variable is not set.");
+  }
+
+  /* 1️⃣  OpenAI TTS ‑> WAV */
+  const res = await fetchFn("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -42,34 +62,42 @@ export async function generateSpeech(
       model: "tts-1",
       voice,
       input: text,
-      language,
-      format: "wav",
+      response_format: "wav",
+      // language, // uncomment when officially supported
     }),
   });
-  if (!r.ok) throw new Error(`OpenAI TTS failed: ${await r.text()}`);
-  const wavBuf = Buffer.from(await r.arrayBuffer());
 
-  /* 2. convert WAV → MP3 */
+  if (!res.ok || !res.body)
+    throw new Error(
+      `OpenAI TTS error ${res.status}: ${res.statusText}\n${await res.text()}`,
+    );
+
+  const wavBuf = Buffer.from(await res.arrayBuffer());
+
+  /* 2️⃣  WAV ‑> MP3 */
   const uid = randomUUID();
-  const dir = path.join(tmpdir(), "storytime_tts_tmp");
-  const wav = path.join(dir, `${uid}.wav`);
-  const mp3 = path.join(dir, `${uid}.mp3`);
+  const tmpDir = path.join(tmpdir(), "storytime_tts", uid);
+  const wavPath = path.join(tmpDir, `${uid}.wav`);
+  const mp3Path = path.join(tmpDir, `${uid}.mp3`);
 
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(wav, wavBuf);
+  await fs.mkdir(tmpDir, { recursive: true });
+  await fs.writeFile(wavPath, wavBuf);
 
-  await new Promise<void>((res, rej) => {
-    ffmpeg().input(wav).audioCodec("libmp3lame").format("mp3").save(mp3)
-      .on("end", () => res())
-      .on("error", rej);
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg()
+      .input(wavPath)
+      .audioCodec("libmp3lame")
+      .audioBitrate("128k")
+      .format("mp3")
+      .on("end", (_stdout: string | null, _stderr: string | null) => resolve())
+      .on("error", reject)
+      .save(mp3Path);
   });
 
-  /* 3. return base64 data‑URL (swap for real upload later) */
-  const mp3Buf = await fs.readFile(mp3);
-  const dataUrl = `data:audio/mpeg;base64,${mp3Buf.toString("base64")}`;
+  const mp3Buffer = await fs.readFile(mp3Path);
 
-  /* 4. cleanup */
-  fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  /* 3️⃣  Cleanup */
+  await fs.rm(tmpDir, { recursive: true, force: true });
 
-  return dataUrl;
+  return { mp3Buffer, contentType: "audio/mpeg" };
 }

@@ -1,13 +1,19 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025‑04‑28  (rewritten per 2025‑04‑28 request)
+// StoryCreator.tsx  •  2025-04-28  (full file, no truncation)
 // -----------------------------------------------------------------------------
-// • Scrolls to page top on every tab change
-// • Dramatically improved Share tab UI (copy / download / social share ready)
-// • Minor lint fixes & type‑safety improvements
-// • No functional changes to generation / TTS logic
+// • Scroll-to-top on tab switch
+// • Share tab: Play/Pause, Copy, Download, Open (four large buttons)
+// • Hidden <audio> element controlled programmatically
+// • Fully lint-clean, type-safe React + Tailwind code
 // -----------------------------------------------------------------------------
 
-import React, { useEffect, useRef, useState, KeyboardEvent } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  KeyboardEvent,
+  MouseEvent,
+} from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -59,6 +65,8 @@ import {
   Loader2,
   AlertCircle,
   Mic,
+  PlayCircle,
+  PauseCircle,
   Copy as CopyIcon,
   Download as DownloadIcon,
   Link as LinkIcon,
@@ -76,21 +84,74 @@ const THEME_SUGGESTIONS = [
 
 const LENGTH_OPTIONS = [3, 5, 10, 15, 30, 60] as const;
 
-/**
- * The six friendly names shown in the UI.
- * id  → OpenAI voice ID   •   label → user‑visible string
- */
 const SUPPORTED_VOICES = [
-  { id: "alloy", label: "Alex (US)" },
-  { id: "echo", label: "Ethan (US)" },
-  { id: "fable", label: "Felix (UK)" },
-  { id: "nova", label: "Nora (US)" },
-  { id: "onyx", label: "Oscar (US)" },
-  { id: "shimmer", label: "Selina (US)" },
+  { id: "alloy", label: "Alex (US)" },
+  { id: "echo", label: "Ethan (US)" },
+  { id: "fable", label: "Felix (UK)" },
+  { id: "nova", label: "Nora (US)" },
+  { id: "onyx", label: "Oscar (US)" },
+  { id: "shimmer", label: "Selina (US)" },
 ] as const;
 
 const SUPPORTED_LANGUAGES = [
-  "Afrikaans","Arabic","Armenian","Azerbaijani","Belarusian","Bosnian","Bulgarian","Catalan","Chinese","Croatian","Czech","Danish","Dutch","English","Estonian","Finnish","French","Galician","German","Greek","Hebrew","Hindi","Hungarian","Icelandic","Indonesian","Italian","Japanese","Kannada","Kazakh","Korean","Latvian","Lithuanian","Macedonian","Malay","Marathi","Maori","Nepali","Norwegian","Persian","Polish","Portuguese","Romanian","Russian","Serbian","Slovak","Slovenian","Spanish","Swahili","Swedish","Tagalog","Tamil","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Welsh",
+  // (list shortened for brevity, but retained in code)
+  "Afrikaans",
+  "Arabic",
+  "Armenian",
+  "Azerbaijani",
+  "Belarusian",
+  "Bosnian",
+  "Bulgarian",
+  "Catalan",
+  "Chinese",
+  "Croatian",
+  "Czech",
+  "Danish",
+  "Dutch",
+  "English",
+  "Estonian",
+  "Finnish",
+  "French",
+  "Galician",
+  "German",
+  "Greek",
+  "Hebrew",
+  "Hindi",
+  "Hungarian",
+  "Icelandic",
+  "Indonesian",
+  "Italian",
+  "Japanese",
+  "Kannada",
+  "Kazakh",
+  "Korean",
+  "Latvian",
+  "Lithuanian",
+  "Macedonian",
+  "Malay",
+  "Marathi",
+  "Maori",
+  "Nepali",
+  "Norwegian",
+  "Persian",
+  "Polish",
+  "Portuguese",
+  "Romanian",
+  "Russian",
+  "Serbian",
+  "Slovak",
+  "Slovenian",
+  "Spanish",
+  "Swahili",
+  "Swedish",
+  "Tagalog",
+  "Tamil",
+  "Thai",
+  "Turkish",
+  "Ukrainian",
+  "Urdu",
+  "Vietnamese",
+  "Welsh",
 ] as const;
 
 /* ─────────── Zod schema ─────────── */
@@ -98,43 +159,92 @@ const schema = z.object({
   storyTitle: z.string().max(150).optional().nullable(),
   theme: z.string().min(1, "Theme is required."),
   length: z.number().min(3).max(60),
-  language: z
-    .string()
-    .refine((val) => (SUPPORTED_LANGUAGES as readonly string[]).includes(val), {
-      message: "Unsupported language",
-    }),
+  language: z.string().refine(
+    (val) => (SUPPORTED_LANGUAGES as readonly string[]).includes(val),
+    { message: "Unsupported language" },
+  ),
   mainCharacter: z.string().max(50).optional().nullable(),
   educationalFocus: z.string().optional().nullable(),
   additionalInstructions: z.string().max(500).optional().nullable(),
 });
 
-type FormValues = z.infer<typeof schema>;
-
-type ActiveTab = "parameters" | "edit" | "voice" | "share";
+export type FormValues = z.infer<typeof schema>;
+export type ActiveTab = "parameters" | "edit" | "voice" | "share";
 
 /* ─────────── Component ─────────── */
 const StoryCreator: React.FC = () => {
   const { user } = useAuth();
   const isSubscriber = Boolean(user?.user_metadata?.subscriber);
 
-  const [storyContent, setStoryContent] = useState<string>("");
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
+  /* ── state ─────────────────────────────────────────────────────────── */
+  const [storyContent, setStoryContent] = useState("");
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(
+    null,
+  );
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
 
-  /* ref for top‑of‑page scrolling */
+  /* ── scroll-to-top on tab switch ────────────────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
-
-  /**
-   * Scroll to top of page whenever the active tab changes.
-   * Using instant scroll for accessibility; change to "smooth" if desired.
-   */
   useEffect(() => {
-    if (pageTopRef.current) pageTopRef.current.scrollIntoView({ behavior: "instant" });
-    // Fallback – if ref missing, scroll whole window
-    else window.scrollTo({ top: 0, behavior: "instant" });
+    if (pageTopRef.current) {
+      pageTopRef.current.scrollIntoView({ behavior: "instant" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
   }, [activeTab]);
 
+  /* ── audio handling ─────────────────────────────────────────────────── */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const handlePlayPause = () => {
+    if (!generatedAudioUrl) return;
+
+    if (!audioRef.current) {
+      audioRef.current = new Audio(generatedAudioUrl);
+      audioRef.current.onended = () => setIsPlaying(false);
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().catch(() => {
+        toast({
+          title: "Playback error",
+          description: "Unable to play audio.",
+          variant: "destructive",
+        });
+      });
+      setIsPlaying(true);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (!generatedAudioUrl) return;
+    navigator.clipboard.writeText(generatedAudioUrl).then(() => {
+      toast({ title: "Link copied", description: "URL copied to clipboard." });
+    });
+  };
+
+  const handleDownload = () => {
+    if (!generatedAudioUrl) return;
+    const a = document.createElement("a");
+    a.href = generatedAudioUrl;
+    a.download = "storytime.mp3";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleOpen = () => {
+    if (!generatedAudioUrl) return;
+    window.open(generatedAudioUrl, "_blank", "noopener,noreferrer");
+  };
+
+  /* ── react-hook-form ────────────────────────────────────────────────── */
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -146,7 +256,7 @@ const StoryCreator: React.FC = () => {
     mode: "onBlur",
   });
 
-  /* ── mutations ────────────────────────────────────────────────────────── */
+  /* ── mutations ─────────────────────────────────────────────────────── */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
       const r = await fetch(`${API_BASE}/generate-story`, {
@@ -171,7 +281,13 @@ const StoryCreator: React.FC = () => {
   });
 
   const generateAudio = useMutation({
-    mutationFn: async ({ text, voiceId }: { text: string; voiceId: string }) => {
+    mutationFn: async ({
+      text,
+      voiceId,
+    }: {
+      text: string;
+      voiceId: string;
+    }) => {
       const language = form.getValues("language");
       const r = await fetch(`${API_BASE}/tts`, {
         method: "POST",
@@ -193,8 +309,8 @@ const StoryCreator: React.FC = () => {
       }),
   });
 
-  /* ── helpers ──────────────────────────────────────────────────────────── */
-  const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>) => {
+  /* ── helpers ───────────────────────────────────────────────────────── */
+  const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (e.key !== "Enter") return;
     const match = THEME_SUGGESTIONS.find((t) =>
       t.toLowerCase().startsWith(e.currentTarget.value.toLowerCase()),
@@ -202,10 +318,12 @@ const StoryCreator: React.FC = () => {
     if (match) form.setValue("theme", match);
   };
 
-  const additionalChars = (form.watch("additionalInstructions") || "").length;
+  const additionalChars = (
+    form.watch("additionalInstructions") || ""
+  ).length;
   const watchLanguage = form.watch("language");
 
-  /* ── UI ───────────────────────────────────────────────────────────────── */
+  /* ── UI ─────────────────────────────────────────────────────────────── */
   return (
     <div ref={pageTopRef} className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
@@ -214,13 +332,12 @@ const StoryCreator: React.FC = () => {
         </h1>
 
         <Form {...form}>
-          <form onSubmit={(e) => e.preventDefault()} noValidate>
+          <form onSubmit={(e) => e.preventDefault()}>
             <Tabs
               value={activeTab}
               onValueChange={(v) => setActiveTab(v as ActiveTab)}
               className="space-y-6"
             >
-              {/* ── TAB HEADERS ───────────────────────────────────────── */}
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="parameters">
                   <PenTool className="mr-1 h-4 w-4" />
@@ -228,11 +345,11 @@ const StoryCreator: React.FC = () => {
                 </TabsTrigger>
                 <TabsTrigger value="edit" disabled={!storyContent}>
                   <Edit className="mr-1 h-4 w-4" />
-                  Edit / Preview
+                  Edit / Preview
                 </TabsTrigger>
                 <TabsTrigger value="voice" disabled={!storyContent}>
                   <Headphones className="mr-1 h-4 w-4" />
-                  Voice & Audio
+                  Voice & Audio
                 </TabsTrigger>
                 <TabsTrigger value="share" disabled={!generatedAudioUrl}>
                   <Share2 className="mr-1 h-4 w-4" />
@@ -240,12 +357,14 @@ const StoryCreator: React.FC = () => {
                 </TabsTrigger>
               </TabsList>
 
-              {/* ── PARAMETERS TAB ─────────────────────────────────────── */}
+              {/* ───────────────────────────────────────────────── parameters */}
               <TabsContent value="parameters">
                 <Card>
                   <CardHeader>
                     <CardTitle>Story Outline</CardTitle>
-                    <CardDescription>Fill in the required fields below.</CardDescription>
+                    <CardDescription>
+                      Fill in the required fields below.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* TITLE */}
@@ -254,9 +373,12 @@ const StoryCreator: React.FC = () => {
                       name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Story Title</FormLabel>
+                          <FormLabel>Story Title</FormLabel>
                           <FormControl>
-                            <Input placeholder="The Great Treehouse Adventure" {...field} />
+                            <Input
+                              placeholder="The Great Treehouse Adventure"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -270,7 +392,8 @@ const StoryCreator: React.FC = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Theme / Genre <span className="text-red-500">*</span>
+                            Theme / Genre{" "}
+                            <span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
                             <Input
@@ -291,7 +414,8 @@ const StoryCreator: React.FC = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Approximate Length (minutes) <span className="text-red-500">*</span>
+                            Approximate Length (minutes){" "}
+                            <span className="text-red-500">*</span>
                           </FormLabel>
                           <RadioGroup
                             className="flex flex-wrap gap-3"
@@ -309,7 +433,11 @@ const StoryCreator: React.FC = () => {
                                   />
                                   <Label
                                     htmlFor={`len-${len}`}
-                                    className={disabled ? "ml-1 text-muted-foreground" : "ml-1"}
+                                    className={
+                                      disabled
+                                        ? "ml-1 text-muted-foreground"
+                                        : "ml-1"
+                                    }
                                   >
                                     {len}
                                   </Label>
@@ -319,7 +447,13 @@ const StoryCreator: React.FC = () => {
                           </RadioGroup>
                           {!isSubscriber && (
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Want to make longer tales? <Link to="/signup" className="text-primary underline">Sign Up</Link>
+                              Want to make longer tales?{" "}
+                              <Link
+                                to="/signup"
+                                className="text-primary underline"
+                              >
+                                Sign Up
+                              </Link>
                             </p>
                           )}
                           <FormMessage />
@@ -337,7 +471,11 @@ const StoryCreator: React.FC = () => {
                             Language <span className="text-red-500">*</span>
                           </FormLabel>
                           <FormControl>
-                            <Input {...field} list="lang-suggestions" placeholder="English, Spanish, French…" />
+                            <Input
+                              {...field}
+                              list="lang-suggestions"
+                              placeholder="English, Spanish, French…"
+                            />
                           </FormControl>
                           <datalist id="lang-suggestions">
                             {SUPPORTED_LANGUAGES.map((lang) => (
@@ -355,9 +493,12 @@ const StoryCreator: React.FC = () => {
                       name="mainCharacter"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Main Character</FormLabel>
+                          <FormLabel>Main Character</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., Penelope, Hudson, Luna the Rabbit" {...field} />
+                            <Input
+                              placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -370,9 +511,12 @@ const StoryCreator: React.FC = () => {
                       name="educationalFocus"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Educational Focus</FormLabel>
+                          <FormLabel>Educational Focus</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., Counting to 10, The Water Cycle, Being Kind" {...field} />
+                            <Input
+                              placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -385,11 +529,13 @@ const StoryCreator: React.FC = () => {
                       name="additionalInstructions"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Special Requests</FormLabel>
+                          <FormLabel>Special Requests</FormLabel>
                           <FormControl>
                             <Textarea rows={4} {...field} />
                           </FormControl>
-                          <p className="text-right text-sm text-muted-foreground">{additionalChars}/500</p>
+                          <p className="text-right text-sm text-muted-foreground">
+                            {additionalChars}/500
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -399,16 +545,22 @@ const StoryCreator: React.FC = () => {
                     <Button
                       type="button"
                       className="w-full bg-storytime-blue text-white"
-                      disabled={generateStory.isPending || !form.formState.isValid}
-                      onClick={form.handleSubmit((d) => generateStory.mutate(d))}
+                      disabled={
+                        generateStory.isPending || !form.formState.isValid
+                      }
+                      onClick={form.handleSubmit((d) =>
+                        generateStory.mutate(d),
+                      )}
                     >
                       {generateStory.isPending ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating…
                         </>
                       ) : (
                         <>
-                          <Sparkles className="mr-2 h-4 w-4" /> Generate Story
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Generate Story
                         </>
                       )}
                     </Button>
@@ -416,16 +568,16 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* ── EDIT / PREVIEW TAB ─────────────────────────────────── */}
+              {/* ─────────────────────────────────────────────────── edit/preview */}
               <TabsContent value="edit">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Edit & Preview</CardTitle>
+                    <CardTitle>Edit & Preview</CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
                       <Label htmlFor="story-editor" className="mb-1 block">
-                        Edit Text
+                        Edit Text
                       </Label>
                       <Textarea
                         id="story-editor"
@@ -439,10 +591,8 @@ const StoryCreator: React.FC = () => {
                       <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
                         {storyContent
                           .split("\n")
-                          .map((p) => p.replace(/^#\s+/, ""))
-                          .map((p, i) => (
-                            <p key={i}>{p}</p>
-                          ))}
+                          .map((p) => p.replace(/^#\s+/, "")) // strip leading #
+                          .map((p, i) => <p key={i}>{p}</p>)}
                       </article>
                     </div>
                   </CardContent>
@@ -452,19 +602,20 @@ const StoryCreator: React.FC = () => {
                       className="ml-auto bg-storytime-blue text-white"
                       onClick={() => setActiveTab("voice")}
                     >
-                      Continue to Voice & Audio
+                      Continue to Voice & Audio
                     </Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
 
-              {/* ── VOICE & AUDIO TAB ─────────────────────────────────── */}
+              {/* ───────────────────────────────────────────────────── voice/audio */}
               <TabsContent value="voice">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Add Narration</CardTitle>
+                    <CardTitle>Add Narration</CardTitle>
                     <CardDescription>
-                      Select voice, then generate audio. (Language: {watchLanguage})
+                      Select voice, then generate audio. (Language:{" "}
+                      {watchLanguage})
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -500,17 +651,22 @@ const StoryCreator: React.FC = () => {
                         if (!SUPPORTED_LANGUAGES.includes(langVal)) {
                           toast({
                             title: "Unsupported language",
-                            description: "Please choose a supported language.",
+                            description:
+                              "Please choose a supported language.",
                             variant: "destructive",
                           });
                           return;
                         }
                         if (storyContent && selectedVoiceId) {
-                          generateAudio.mutate({ text: storyContent, voiceId: selectedVoiceId });
+                          generateAudio.mutate({
+                            text: storyContent,
+                            voiceId: selectedVoiceId,
+                          });
                         } else {
                           toast({
                             title: "Missing input",
-                            description: "Provide story text and select a voice.",
+                            description:
+                              "Provide story text and select a voice.",
                             variant: "destructive",
                           });
                         }
@@ -523,11 +679,13 @@ const StoryCreator: React.FC = () => {
                     >
                       {generateAudio.isPending ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating…
                         </>
                       ) : (
                         <>
-                          <Mic className="mr-2 h-4 w-4" /> Generate Narration
+                          <Mic className="mr-2 h-4 w-4" />
+                          Generate Narration
                         </>
                       )}
                     </Button>
@@ -536,86 +694,87 @@ const StoryCreator: React.FC = () => {
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>{generateAudio.error.message}</AlertDescription>
+                        <AlertDescription>
+                          {generateAudio.error.message}
+                        </AlertDescription>
                       </Alert>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              {/* ── SHARE TAB ─────────────────────────────────────────── */}
+              {/* ───────────────────────────────────────────────────────── share */}
               <TabsContent value="share">
-                <Card className="relative overflow-hidden border border-primary/20 shadow-lg">
-                  {/* Decorative header wave */}
-                  <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-primary via-storytime-blue to-primary opacity-60" />
-
-                  <CardHeader className="pb-2 pt-6">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <Share2 className="h-5 w-5" /> Share Your Story
-                    </CardTitle>
-                    <CardDescription>Enjoy your narrated adventure and share it widely!</CardDescription>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Share Your Story</CardTitle>
+                    <CardDescription>
+                      Quick actions for your narrated story.
+                    </CardDescription>
                   </CardHeader>
-
-                  <CardContent className="space-y-6">
-                    {/* AUDIO PLAYER */}
-                    {generatedAudioUrl && (
-                      <audio controls src={generatedAudioUrl} className="w-full rounded-lg border border-muted" />
-                    )}
-
-                    {/* URL BOX WITH COPY */}
-                    <div className="flex flex-col gap-2 md:flex-row">
-                      <Input
-                        readOnly
-                        value={generatedAudioUrl ?? ""}
-                        onFocus={(e) => e.currentTarget.select()}
-                        className="flex-1 font-mono text-xs"
-                        aria-label="Shareable URL"
-                      />
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      {/* Play / Pause */}
                       <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => {
-                          if (!generatedAudioUrl) return;
-                          navigator.clipboard.writeText(generatedAudioUrl);
-                          toast({ title: "Copied!", description: "Link copied to clipboard." });
-                        }}
-                        className="shrink-0"
+                        variant="outline"
+                        className="flex flex-col items-center justify-center py-6"
+                        onClick={handlePlayPause}
+                        disabled={!generatedAudioUrl}
                       >
-                        <CopyIcon className="mr-1 h-4 w-4" /> Copy
+                        {isPlaying ? (
+                          <>
+                            <PauseCircle className="mb-1 h-8 w-8" />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <PlayCircle className="mb-1 h-8 w-8" />
+                            Play
+                          </>
+                        )}
+                      </Button>
+
+                      {/* Copy Link */}
+                      <Button
+                        variant="outline"
+                        className="flex flex-col items-center justify-center py-6"
+                        onClick={handleCopyLink}
+                        disabled={!generatedAudioUrl}
+                      >
+                        <CopyIcon className="mb-1 h-8 w-8" />
+                        Copy
+                      </Button>
+
+                      {/* Download */}
+                      <Button
+                        variant="outline"
+                        className="flex flex-col items-center justify-center py-6"
+                        onClick={handleDownload}
+                        disabled={!generatedAudioUrl}
+                      >
+                        <DownloadIcon className="mb-1 h-8 w-8" />
+                        Download
+                      </Button>
+
+                      {/* Open in New Tab */}
+                      <Button
+                        variant="outline"
+                        className="flex flex-col items-center justify-center py-6"
+                        onClick={handleOpen}
+                        disabled={!generatedAudioUrl}
+                      >
+                        <LinkIcon className="mb-1 h-8 w-8" />
+                        Open
                       </Button>
                     </div>
-
-                    {/* DOWNLOAD & OPEN BUTTONS */}
-                    <div className="flex flex-wrap items-center gap-4">
-                      <a
-                        href={generatedAudioUrl ?? "#"}
-                        download="storytime.mp3"
-                        className="inline-flex"
-                        aria-label="Download MP3"
-                      >
-                        <Button type="button" variant="outline" disabled={!generatedAudioUrl}>
-                          <DownloadIcon className="mr-2 h-4 w-4" /> Download MP3
-                        </Button>
-                      </a>
-
-                      <a
-                        href={generatedAudioUrl ?? "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex"
-                        aria-label="Open in new tab"
-                      >
-                        <Button type="button" variant="ghost" disabled={!generatedAudioUrl}>
-                          <LinkIcon className="mr-2 h-4 w-4" /> Open in New Tab
-                        </Button>
-                      </a>
-                    </div>
-
-                    {/* SOCIAL SHARE PLACEHOLDER (ready for future) */}
-                    <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                      Integrate your preferred social‑share component here.
-                    </div>
                   </CardContent>
+                  <CardFooter>
+                    {!generatedAudioUrl && (
+                      <p className="text-sm text-muted-foreground">
+                        Generate narration first to enable sharing.
+                      </p>
+                    )}
+                  </CardFooter>
                 </Card>
               </TabsContent>
             </Tabs>

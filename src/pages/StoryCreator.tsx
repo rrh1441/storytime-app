@@ -46,13 +46,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Removed Select imports
 
 /* ─────────── Icons ─────────── */
 import {
@@ -69,6 +63,8 @@ import {
   Copy as CopyIcon,
   Download as DownloadIcon,
   Link as LinkIcon,
+  Check, // Added Check icon
+  Play,  // Added Play icon
 } from "lucide-react";
 
 /* ─────────── Static data ─────────── */
@@ -120,11 +116,10 @@ const StoryCreator: React.FC = () => {
 
   /* ── state ──────────────────────────────────────────────── */
   const [storyContent, setStoryContent] = useState("");
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(
-    null,
-  );
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null); // For voice preview spinner
 
   /* ── scroll-to-top on tab switch ────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -137,8 +132,10 @@ const StoryCreator: React.FC = () => {
   }, [activeTab]);
 
   /* ── audio handling ─────────────────────────────────────── */
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null); // Main narration player
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null); // Voice preview player
+  const previewCache = useRef<Record<string, string>>({}); // Cache for preview URLs
+  const [isPlaying, setIsPlaying] = useState(false); // Main narration playback state
 
   const handlePlayPause = () => {
     if (!generatedAudioUrl) return;
@@ -179,7 +176,7 @@ const StoryCreator: React.FC = () => {
     if (!generatedAudioUrl) return;
     const a = document.createElement("a");
     a.href = generatedAudioUrl;
-    a.download = "storytime.mp3";
+    a.download = "storytime.mp3"; // Consider using storyTitle here
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
@@ -190,6 +187,97 @@ const StoryCreator: React.FC = () => {
     if (!generatedAudioUrl) return;
     window.open(generatedAudioUrl, "_blank", "noopener,noreferrer");
   };
+
+  /* ── Voice Preview Handling ────────────────────────────────── */
+  const handleVoicePreview = async (voiceId: string) => {
+    setSelectedVoiceId(voiceId); // Select the voice immediately for UI feedback
+    setGeneratedAudioUrl(null); // Reset main audio if voice changes
+
+    // Ensure preview audio element exists
+    if (!previewAudioRef.current) {
+      previewAudioRef.current = new Audio();
+      previewAudioRef.current.preload = "none"; // Avoid preloading until needed
+      // Optional: Add error handling for the audio element itself
+      previewAudioRef.current.onerror = () => {
+        console.error("Preview audio element error");
+        toast({
+          title: "Preview Error",
+          description: "Could not initialize audio player.",
+          variant: "destructive",
+        });
+        setPreviewLoadingId(null); // Stop loading indicator on error
+      };
+    }
+
+    // Pause any currently playing preview before starting new one or cached one
+    previewAudioRef.current.pause();
+    previewAudioRef.current.currentTime = 0;
+
+    // Check cache first
+    if (previewCache.current[voiceId]) {
+      previewAudioRef.current.src = previewCache.current[voiceId];
+      try {
+        // No need to await play, let it run in the background
+        previewAudioRef.current.play().catch(err => {
+            console.error("Error playing cached preview:", err);
+             toast({
+                 title: "Preview Playback Error",
+                 description: "Could not play cached audio preview.",
+                 variant: "destructive",
+             });
+        });
+      } catch (err) { // Catch sync errors if any (though play() returns Promise)
+         console.error("Error initiating cached preview playback:", err);
+         toast({
+             title: "Preview Playback Error",
+             description: "Could not start cached audio preview.",
+             variant: "destructive",
+         });
+      }
+      return; // Already cached, attempted playback
+    }
+
+    // Not cached, fetch URL
+    setPreviewLoadingId(voiceId);
+    try {
+      // Use the specified endpoint structure
+      const response = await fetch(`/api/tts/preview?voice=${voiceId}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
+      }
+      // Expecting { signedUrl: '...' } structure based on instructions
+      const data = await response.json() as { signedUrl: string };
+      const signedUrl = data?.signedUrl;
+
+      if (!signedUrl) {
+          throw new Error("No signed URL received from preview endpoint.");
+      }
+
+      previewCache.current[voiceId] = signedUrl; // Cache the fetched URL
+      previewAudioRef.current.src = signedUrl;
+      // No need to await play, let it run in the background
+      previewAudioRef.current.play().catch(err => {
+          console.error("Error playing fetched preview:", err);
+           toast({
+               title: "Preview Playback Error",
+               description: "Could not play fetched audio preview.",
+               variant: "destructive",
+           });
+      });
+
+    } catch (error) {
+      console.error("Error fetching or playing voice preview:", error);
+      toast({
+        title: "Voice Preview Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setPreviewLoadingId(null); // Clear loading state regardless of outcome
+    }
+  };
+
 
   /* ── form ──────────────────────────────────────────────── */
   const form = useForm<FormValues>({
@@ -242,11 +330,17 @@ const StoryCreator: React.FC = () => {
         body: JSON.stringify({ text, voice: voiceId, language }),
       });
       if (!r.ok) throw new Error(await r.text());
+      // Assuming the main TTS endpoint returns { audioUrl: '...' }
       return (await r.json()).audioUrl as string;
     },
     onSuccess: (url) => {
       setGeneratedAudioUrl(url);
       setActiveTab("share");
+      // Stop any playing preview when main audio is generated
+      if (previewAudioRef.current) {
+          previewAudioRef.current.pause();
+          previewAudioRef.current.currentTime = 0;
+      }
     },
     onError: (e: Error) =>
       toast({
@@ -328,6 +422,7 @@ const StoryCreator: React.FC = () => {
                             <Input
                               placeholder="The Great Treehouse Adventure"
                               {...field}
+                              value={field.value ?? ''} // Ensure controlled component
                             />
                           </FormControl>
                           <FormMessage />
@@ -448,6 +543,7 @@ const StoryCreator: React.FC = () => {
                             <Input
                               placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
                               {...field}
+                               value={field.value ?? ''} // Ensure controlled component
                             />
                           </FormControl>
                           <FormMessage />
@@ -466,6 +562,7 @@ const StoryCreator: React.FC = () => {
                             <Input
                               placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
                               {...field}
+                               value={field.value ?? ''} // Ensure controlled component
                             />
                           </FormControl>
                           <FormMessage />
@@ -481,7 +578,11 @@ const StoryCreator: React.FC = () => {
                         <FormItem>
                           <FormLabel>Special Requests</FormLabel>
                           <FormControl>
-                            <Textarea rows={4} {...field} />
+                            <Textarea
+                              rows={4}
+                              {...field}
+                              value={field.value ?? ''} // Ensure controlled component
+                             />
                           </FormControl>
                           <p className="text-right text-sm text-muted-foreground">
                             {additionalChars}/500
@@ -494,7 +595,7 @@ const StoryCreator: React.FC = () => {
                   <CardFooter>
                     <Button
                       type="button"
-                      className="w-full bg-storytime-blue text-white"
+                      className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       disabled={
                         generateStory.isPending || !form.formState.isValid
                       }
@@ -541,16 +642,17 @@ const StoryCreator: React.FC = () => {
                       <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
                         {storyContent
                           .split("\n")
-                          .map((p) => p.replace(/^#\s+/, "")) // strip leading #
-                          .map((p, i) => <p key={i}>{p}</p>)}
+                          .filter(p => p.trim() !== '') // Filter empty lines
+                          .map((p, i) => <p key={i}>{p.replace(/^#\s+/, "")}</p>)}
                       </article>
                     </div>
                   </CardContent>
                   <CardFooter>
                     <Button
                       type="button"
-                      className="ml-auto bg-storytime-blue text-white"
+                      className="ml-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       onClick={() => setActiveTab("voice")}
+                      disabled={!storyContent.trim()} // Disable if story is empty
                     >
                       Continue to Voice & Audio
                     </Button>
@@ -569,54 +671,59 @@ const StoryCreator: React.FC = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {/* voice select */}
+                    {/* Voice select buttons */}
                     <div className="space-y-2">
-                      <Label htmlFor="voice-select">Voice</Label>
-                      <Select
-                        value={selectedVoiceId}
-                        onValueChange={(v) => {
-                          setSelectedVoiceId(v);
-                          setGeneratedAudioUrl(null);
-                        }}
-                      >
-                        <SelectTrigger id="voice-select">
-                          <SelectValue placeholder="Choose a voice" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SUPPORTED_VOICES.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>
-                              {v.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label>Voice Preview & Selection</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Click a voice to hear a preview and select it for narration.
+                      </p>
+                      <div className="flex flex-wrap gap-3 pt-2">
+                        {SUPPORTED_VOICES.map((v) => (
+                          <Button
+                            key={v.id}
+                            variant={selectedVoiceId === v.id ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleVoicePreview(v.id)}
+                            // Disable only the button currently loading its preview
+                            disabled={previewLoadingId === v.id}
+                            className={`flex min-w-[120px] items-center justify-center gap-1.5 transition-all ${
+                              selectedVoiceId === v.id
+                                ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90'
+                                : ''
+                            }`}
+                          >
+                            {previewLoadingId === v.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : selectedVoiceId === v.id ? (
+                              <Check className="h-4 w-4 flex-shrink-0" />
+                            ) : (
+                              <Play className="h-4 w-4 flex-shrink-0" />
+                            )}
+                            <span className="flex-grow text-left">{v.label}</span>
+                          </Button>
+                        ))}
+                      </div>
+                      {/* Hidden audio player for previews */}
+                      <audio ref={previewAudioRef} className="hidden" preload="none" />
                     </div>
 
-                    {/* generate audio */}
+                    {/* Generate audio button */}
                     <Button
                       type="button"
-                      className="w-full bg-storytime-blue text-white"
+                      className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       onClick={() => {
-                        const langVal = form.getValues("language");
-                        if (!SUPPORTED_LANGUAGES.includes(langVal)) {
-                          toast({
-                            title: "Unsupported language",
-                            description:
-                              "Please choose a supported language.",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
+                        // Language validation happens via the disabled state now
                         if (storyContent && selectedVoiceId) {
                           generateAudio.mutate({
                             text: storyContent,
                             voiceId: selectedVoiceId,
                           });
                         } else {
+                          // This toast might be redundant if button disabled state is accurate
                           toast({
                             title: "Missing input",
                             description:
-                              "Provide story text and select a voice.",
+                              "Ensure story text exists and a voice is selected.",
                             variant: "destructive",
                           });
                         }
@@ -624,6 +731,7 @@ const StoryCreator: React.FC = () => {
                       disabled={
                         generateAudio.isPending ||
                         !selectedVoiceId ||
+                        !storyContent.trim() ||
                         !SUPPORTED_LANGUAGES.includes(form.getValues("language"))
                       }
                     >
@@ -643,9 +751,11 @@ const StoryCreator: React.FC = () => {
                     {generateAudio.isError && (
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>Error</AlertTitle>
+                        <AlertTitle>Error Generating Audio</AlertTitle>
                         <AlertDescription>
-                          {generateAudio.error.message}
+                          {generateAudio.error instanceof Error
+                            ? generateAudio.error.message
+                            : "An unknown error occurred."}
                         </AlertDescription>
                       </Alert>
                     )}
@@ -669,7 +779,7 @@ const StoryCreator: React.FC = () => {
                         aria-label={isPlaying ? "Pause audio" : "Play audio"}
                         className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
                         onClick={handlePlayPause}
-                        disabled={!generatedAudioUrl}
+                        disabled={!generatedAudioUrl || generateAudio.isPending}
                       >
                         {isPlaying ? (
                           <PauseCircle className="h-6 w-6" />
@@ -684,7 +794,7 @@ const StoryCreator: React.FC = () => {
                         aria-label="Copy link"
                         className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleCopyLink}
-                        disabled={!generatedAudioUrl}
+                        disabled={!generatedAudioUrl || generateAudio.isPending}
                       >
                         <CopyIcon className="h-6 w-6" />
                         Copy
@@ -695,7 +805,7 @@ const StoryCreator: React.FC = () => {
                         aria-label="Download MP3"
                         className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleDownload}
-                        disabled={!generatedAudioUrl}
+                        disabled={!generatedAudioUrl || generateAudio.isPending}
                       >
                         <DownloadIcon className="h-6 w-6" />
                         Download
@@ -706,7 +816,7 @@ const StoryCreator: React.FC = () => {
                         aria-label="Open in new tab"
                         className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleOpen}
-                        disabled={!generatedAudioUrl}
+                        disabled={!generatedAudioUrl || generateAudio.isPending}
                       >
                         <LinkIcon className="h-6 w-6" />
                         Open
@@ -714,9 +824,14 @@ const StoryCreator: React.FC = () => {
                     </div>
                   </CardContent>
                   <CardFooter>
-                    {!generatedAudioUrl && (
-                      <p className="text-sm text-muted-foreground">
-                        Generate narration first to enable sharing.
+                    {!generatedAudioUrl && !generateAudio.isPending && (
+                      <p className="text-sm text-muted-foreground w-full text-center">
+                        Generate narration first to enable sharing actions.
+                      </p>
+                    )}
+                     {generateAudio.isPending && (
+                      <p className="text-sm text-muted-foreground w-full text-center">
+                        Generating audio... sharing actions will be enabled shortly.
                       </p>
                     )}
                   </CardFooter>

@@ -1,6 +1,8 @@
 // -----------------------------------------------------------------------------
 // StoryCreator.tsx  •  2025-04-28  (full file, zero truncation)
 // -----------------------------------------------------------------------------
+// • Uses Supabase Storage public URLs for voice previews from 'voice-previews' bucket
+// • Requires VITE_SUPABASE_URL env var and public bucket access
 // • Scroll-to-top on tab switch
 // • Share tab: four pill-style buttons (Play/Pause, Copy, Download, Open)
 // • Hidden <audio> element controlled programmatically
@@ -46,7 +48,6 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-// Removed Select imports
 
 /* ─────────── Icons ─────────── */
 import {
@@ -63,8 +64,8 @@ import {
   Copy as CopyIcon,
   Download as DownloadIcon,
   Link as LinkIcon,
-  Check, // Added Check icon
-  Play,  // Added Play icon
+  Check,
+  Play,
 } from "lucide-react";
 
 /* ─────────── Static data ─────────── */
@@ -87,6 +88,9 @@ const SUPPORTED_VOICES = [
   { id: "onyx", label: "Oscar (US)" },
   { id: "shimmer", label: "Selina (US)" },
 ] as const;
+
+// Bucket name in Supabase Storage
+const PREVIEW_BUCKET_NAME = "voice-previews";
 
 const SUPPORTED_LANGUAGES = [
   "Afrikaans","Arabic","Armenian","Azerbaijani","Belarusian","Bosnian","Bulgarian","Catalan","Chinese","Croatian","Czech","Danish","Dutch","English","Estonian","Finnish","French","Galician","German","Greek","Hebrew","Hindi","Hungarian","Icelandic","Indonesian","Italian","Japanese","Kannada","Kazakh","Korean","Latvian","Lithuanian","Macedonian","Malay","Marathi","Maori","Nepali","Norwegian","Persian","Polish","Portuguese","Romanian","Russian","Serbian","Slovak","Slovenian","Spanish","Swahili","Swedish","Tagalog","Tamil","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Welsh",
@@ -119,7 +123,6 @@ const StoryCreator: React.FC = () => {
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
-  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null); // For voice preview spinner
 
   /* ── scroll-to-top on tab switch ────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -134,7 +137,6 @@ const StoryCreator: React.FC = () => {
   /* ── audio handling ─────────────────────────────────────── */
   const audioRef = useRef<HTMLAudioElement | null>(null); // Main narration player
   const previewAudioRef = useRef<HTMLAudioElement | null>(null); // Voice preview player
-  const previewCache = useRef<Record<string, string>>({}); // Cache for preview URLs
   const [isPlaying, setIsPlaying] = useState(false); // Main narration playback state
 
   const handlePlayPause = () => {
@@ -143,6 +145,10 @@ const StoryCreator: React.FC = () => {
     if (!audioRef.current) {
       audioRef.current = new Audio(generatedAudioUrl);
       audioRef.current.onended = () => setIsPlaying(false);
+      audioRef.current.onerror = () => {
+         toast({ title: "Playback Error", description: "Could not load main audio.", variant: "destructive" });
+         setIsPlaying(false);
+      }
     }
 
     if (isPlaying) {
@@ -152,13 +158,15 @@ const StoryCreator: React.FC = () => {
       audioRef.current
         .play()
         .then(() => setIsPlaying(true))
-        .catch(() =>
+        .catch((err) => {
+          console.error("Error playing main audio:", err);
           toast({
             title: "Playback error",
             description: "Unable to play audio.",
             variant: "destructive",
-          }),
-        );
+          });
+          setIsPlaying(false);
+        });
     }
   };
 
@@ -174,9 +182,11 @@ const StoryCreator: React.FC = () => {
 
   const handleDownload = () => {
     if (!generatedAudioUrl) return;
+    const title = form.getValues("storyTitle") || "storytime";
+    const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const a = document.createElement("a");
     a.href = generatedAudioUrl;
-    a.download = "storytime.mp3"; // Consider using storyTitle here
+    a.download = `${safeTitle}.mp3`;
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
@@ -188,94 +198,57 @@ const StoryCreator: React.FC = () => {
     window.open(generatedAudioUrl, "_blank", "noopener,noreferrer");
   };
 
-  /* ── Voice Preview Handling ────────────────────────────────── */
-  const handleVoicePreview = async (voiceId: string) => {
-    setSelectedVoiceId(voiceId); // Select the voice immediately for UI feedback
-    setGeneratedAudioUrl(null); // Reset main audio if voice changes
+  /* ── Voice Preview Handling (Supabase Storage) ────────────────── */
+  const handleVoicePreview = (voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    setGeneratedAudioUrl(null);
 
-    // Ensure preview audio element exists
+    // --- Construct Supabase Public URL ---
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+        console.error("VITE_SUPABASE_URL environment variable is not set.");
+        toast({
+            title: "Configuration Error",
+            description: "Supabase URL is not configured in environment variables.",
+            variant: "destructive",
+        });
+        return; // Cannot proceed without the base URL
+    }
+    // Ensure base URL structure is correct (remove trailing slash if exists)
+    const baseUrl = supabaseUrl.endsWith('/') ? supabaseUrl.slice(0, -1) : supabaseUrl;
+    // Construct the full public URL
+    // IMPORTANT: Requires 'voice-previews' bucket to be public & files named like 'alloy.mp3'
+    const previewUrl = `${baseUrl}/storage/v1/object/public/${PREVIEW_BUCKET_NAME}/${voiceId}.mp3`;
+    // --- End URL Construction ---
+
+
     if (!previewAudioRef.current) {
       previewAudioRef.current = new Audio();
-      previewAudioRef.current.preload = "none"; // Avoid preloading until needed
-      // Optional: Add error handling for the audio element itself
-      previewAudioRef.current.onerror = () => {
-        console.error("Preview audio element error");
+      previewAudioRef.current.preload = "auto";
+      previewAudioRef.current.onerror = (e) => {
+        console.error(`Preview audio element error loading ${previewUrl}:`, e);
+        const target = e.target as HTMLAudioElement;
+        const errorDetails = target.error ? ` Code ${target.error.code}: ${target.error.message}` : '';
         toast({
           title: "Preview Error",
-          description: "Could not initialize audio player.",
+          description: `Could not load audio file from Supabase Storage. Check bucket permissions and file existence.${errorDetails}`,
           variant: "destructive",
         });
-        setPreviewLoadingId(null); // Stop loading indicator on error
       };
     }
 
-    // Pause any currently playing preview before starting new one or cached one
     previewAudioRef.current.pause();
     previewAudioRef.current.currentTime = 0;
+    previewAudioRef.current.src = previewUrl; // Set the source to the Supabase URL
 
-    // Check cache first
-    if (previewCache.current[voiceId]) {
-      previewAudioRef.current.src = previewCache.current[voiceId];
-      try {
-        // No need to await play, let it run in the background
-        previewAudioRef.current.play().catch(err => {
-            console.error("Error playing cached preview:", err);
-             toast({
-                 title: "Preview Playback Error",
-                 description: "Could not play cached audio preview.",
-                 variant: "destructive",
-             });
-        });
-      } catch (err) { // Catch sync errors if any (though play() returns Promise)
-         console.error("Error initiating cached preview playback:", err);
+    previewAudioRef.current.play().catch(err => {
+        console.error(`Error playing preview ${previewUrl}:`, err);
          toast({
              title: "Preview Playback Error",
-             description: "Could not start cached audio preview.",
+             description: "Could not play the audio preview file.",
              variant: "destructive",
          });
-      }
-      return; // Already cached, attempted playback
-    }
-
-    // Not cached, fetch URL
-    setPreviewLoadingId(voiceId);
-    try {
-      // Use the specified endpoint structure
-      const response = await fetch(`/api/tts/preview?voice=${voiceId}`);
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `HTTP error! status: ${response.status}`);
-      }
-      // Expecting { signedUrl: '...' } structure based on instructions
-      const data = await response.json() as { signedUrl: string };
-      const signedUrl = data?.signedUrl;
-
-      if (!signedUrl) {
-          throw new Error("No signed URL received from preview endpoint.");
-      }
-
-      previewCache.current[voiceId] = signedUrl; // Cache the fetched URL
-      previewAudioRef.current.src = signedUrl;
-      // No need to await play, let it run in the background
-      previewAudioRef.current.play().catch(err => {
-          console.error("Error playing fetched preview:", err);
-           toast({
-               title: "Preview Playback Error",
-               description: "Could not play fetched audio preview.",
-               variant: "destructive",
-           });
-      });
-
-    } catch (error) {
-      console.error("Error fetching or playing voice preview:", error);
-      toast({
-        title: "Voice Preview Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
-      });
-    } finally {
-      setPreviewLoadingId(null); // Clear loading state regardless of outcome
-    }
+    });
   };
 
 
@@ -299,7 +272,10 @@ const StoryCreator: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+         const errorText = await r.text();
+         throw new Error(errorText || `Story generation failed with status ${r.status}`);
+      }
       return (await r.json()) as { story: string; title: string };
     },
     onSuccess: ({ story, title }) => {
@@ -329,14 +305,15 @@ const StoryCreator: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice: voiceId, language }),
       });
-      if (!r.ok) throw new Error(await r.text());
-      // Assuming the main TTS endpoint returns { audioUrl: '...' }
+       if (!r.ok) {
+         const errorText = await r.text();
+         throw new Error(errorText || `Audio generation failed with status ${r.status}`);
+      }
       return (await r.json()).audioUrl as string;
     },
     onSuccess: (url) => {
       setGeneratedAudioUrl(url);
       setActiveTab("share");
-      // Stop any playing preview when main audio is generated
       if (previewAudioRef.current) {
           previewAudioRef.current.pause();
           previewAudioRef.current.currentTime = 0;
@@ -407,7 +384,7 @@ const StoryCreator: React.FC = () => {
                   <CardHeader>
                     <CardTitle>Story Outline</CardTitle>
                     <CardDescription>
-                      Fill in the required fields below.
+                      Describe the story you want to create.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -417,12 +394,12 @@ const StoryCreator: React.FC = () => {
                       name="storyTitle"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Story Title</FormLabel>
+                          <FormLabel>Story Title (Optional)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="The Great Treehouse Adventure"
                               {...field}
-                              value={field.value ?? ''} // Ensure controlled component
+                              value={field.value ?? ''}
                             />
                           </FormControl>
                           <FormMessage />
@@ -538,12 +515,12 @@ const StoryCreator: React.FC = () => {
                       name="mainCharacter"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Main Character</FormLabel>
+                          <FormLabel>Main Character (Optional)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
                               {...field}
-                               value={field.value ?? ''} // Ensure controlled component
+                               value={field.value ?? ''}
                             />
                           </FormControl>
                           <FormMessage />
@@ -557,12 +534,12 @@ const StoryCreator: React.FC = () => {
                       name="educationalFocus"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Educational Focus</FormLabel>
+                          <FormLabel>Educational Focus (Optional)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
                               {...field}
-                               value={field.value ?? ''} // Ensure controlled component
+                               value={field.value ?? ''}
                             />
                           </FormControl>
                           <FormMessage />
@@ -576,12 +553,13 @@ const StoryCreator: React.FC = () => {
                       name="additionalInstructions"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Special Requests</FormLabel>
+                          <FormLabel>Special Requests (Optional)</FormLabel>
                           <FormControl>
                             <Textarea
                               rows={4}
                               {...field}
-                              value={field.value ?? ''} // Ensure controlled component
+                              value={field.value ?? ''}
+                              placeholder="e.g., Make the ending happy, include a talking squirrel, avoid scary themes"
                              />
                           </FormControl>
                           <p className="text-right text-sm text-muted-foreground">
@@ -624,6 +602,9 @@ const StoryCreator: React.FC = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Edit & Preview</CardTitle>
+                    <CardDescription>
+                       Review and edit the generated story text below.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
@@ -635,14 +616,15 @@ const StoryCreator: React.FC = () => {
                         value={storyContent}
                         onChange={(e) => setStoryContent(e.target.value)}
                         rows={20}
+                        className="resize-y"
                       />
                     </div>
                     <div>
                       <Label className="mb-1 block">Preview</Label>
-                      <article className="prose prose-sm max-h-[32rem] overflow-y-auto rounded-md bg-white p-4">
+                      <article className="prose prose-sm max-h-[calc(theme(space.96)_*_2)] overflow-y-auto rounded-md border bg-background p-4">
                         {storyContent
                           .split("\n")
-                          .filter(p => p.trim() !== '') // Filter empty lines
+                          .filter(p => p.trim() !== '')
                           .map((p, i) => <p key={i}>{p.replace(/^#\s+/, "")}</p>)}
                       </article>
                     </div>
@@ -652,7 +634,7 @@ const StoryCreator: React.FC = () => {
                       type="button"
                       className="ml-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       onClick={() => setActiveTab("voice")}
-                      disabled={!storyContent.trim()} // Disable if story is empty
+                      disabled={!storyContent.trim()}
                     >
                       Continue to Voice & Audio
                     </Button>
@@ -666,45 +648,37 @@ const StoryCreator: React.FC = () => {
                   <CardHeader>
                     <CardTitle>Add Narration</CardTitle>
                     <CardDescription>
-                      Select voice, then generate audio. (Language:{" "}
-                      {watchLanguage})
+                      Select a voice below to preview it and set it for narration. (Language: {watchLanguage})
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Voice select buttons */}
-                    <div className="space-y-2">
-                      <Label>Voice Preview & Selection</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Click a voice to hear a preview and select it for narration.
-                      </p>
-                      <div className="flex flex-wrap gap-3 pt-2">
+                    <div className="space-y-4">
+                      {/* Grid layout for buttons */}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {SUPPORTED_VOICES.map((v) => (
                           <Button
                             key={v.id}
                             variant={selectedVoiceId === v.id ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleVoicePreview(v.id)}
-                            // Disable only the button currently loading its preview
-                            disabled={previewLoadingId === v.id}
-                            className={`flex min-w-[120px] items-center justify-center gap-1.5 transition-all ${
+                            className={`flex min-w-[100px] items-center justify-start gap-1.5 rounded-md px-3 py-2 text-left transition-all sm:min-w-[120px] ${
                               selectedVoiceId === v.id
                                 ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90'
                                 : ''
                             }`}
                           >
-                            {previewLoadingId === v.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : selectedVoiceId === v.id ? (
+                            {selectedVoiceId === v.id ? (
                               <Check className="h-4 w-4 flex-shrink-0" />
                             ) : (
-                              <Play className="h-4 w-4 flex-shrink-0" />
+                              <Play className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                             )}
-                            <span className="flex-grow text-left">{v.label}</span>
+                            <span className="truncate">{v.label}</span>
                           </Button>
                         ))}
                       </div>
                       {/* Hidden audio player for previews */}
-                      <audio ref={previewAudioRef} className="hidden" preload="none" />
+                      <audio ref={previewAudioRef} className="hidden" preload="auto" />
                     </div>
 
                     {/* Generate audio button */}
@@ -712,19 +686,10 @@ const StoryCreator: React.FC = () => {
                       type="button"
                       className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       onClick={() => {
-                        // Language validation happens via the disabled state now
                         if (storyContent && selectedVoiceId) {
                           generateAudio.mutate({
                             text: storyContent,
                             voiceId: selectedVoiceId,
-                          });
-                        } else {
-                          // This toast might be redundant if button disabled state is accurate
-                          toast({
-                            title: "Missing input",
-                            description:
-                              "Ensure story text exists and a voice is selected.",
-                            variant: "destructive",
                           });
                         }
                       }}
@@ -769,7 +734,7 @@ const StoryCreator: React.FC = () => {
                   <CardHeader>
                     <CardTitle>Share Your Story</CardTitle>
                     <CardDescription>
-                      Quick actions for your narrated story.
+                      Listen, copy link, download, or open your narrated story.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -825,12 +790,12 @@ const StoryCreator: React.FC = () => {
                   </CardContent>
                   <CardFooter>
                     {!generatedAudioUrl && !generateAudio.isPending && (
-                      <p className="text-sm text-muted-foreground w-full text-center">
+                      <p className="w-full text-center text-sm text-muted-foreground">
                         Generate narration first to enable sharing actions.
                       </p>
                     )}
                      {generateAudio.isPending && (
-                      <p className="text-sm text-muted-foreground w-full text-center">
+                      <p className="w-full text-center text-sm text-muted-foreground">
                         Generating audio... sharing actions will be enabled shortly.
                       </p>
                     )}

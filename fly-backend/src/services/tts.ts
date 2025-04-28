@@ -1,5 +1,4 @@
-// -----------------------------------------------------------------------------
-// TTS Service  •  2025‑04‑22  (friendly‑voice update)
+// services/tts.ts  •  2025‑04‑28 – refactored to store audio via service‑role
 // -----------------------------------------------------------------------------
 
 import ffmpeg from "fluent-ffmpeg";
@@ -9,6 +8,7 @@ import { tmpdir } from "os";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import nodeFetch from "node-fetch";
+import { uploadAudio } from "./storage.js"; // adjust relative path if needed
 
 // ── fetch poly‑fill (Node <18) ───────────────────────────────────────────────
 const fetchFn: typeof globalThis.fetch =
@@ -21,16 +21,23 @@ const ffmpegPath = (ffmpegStatic as unknown as string) ?? "";
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 
 // ── Voice definitions ────────────────────────────────────────────────────────
-export const VOICES = ["alloy", "echo", "fable", "nova", "onyx", "shimmer"] as const;
+export const VOICES = [
+  "alloy",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
+  "shimmer",
+] as const;
 export type VoiceId = (typeof VOICES)[number];
 
 /** UI label → OpenAI voice ID */
 const LABEL_TO_ID: Record<string, VoiceId> = {
-  "Alex (US)":   "alloy",
-  "Ethan (US)":  "echo",
-  "Felix (UK)":  "fable",
-  "Nora (US)":   "nova",
-  "Oscar (US)":  "onyx",
+  "Alex (US)": "alloy",
+  "Ethan (US)": "echo",
+  "Felix (UK)": "fable",
+  "Nora (US)": "nova",
+  "Oscar (US)": "onyx",
   "Selina (US)": "shimmer",
 };
 
@@ -38,17 +45,22 @@ const LABEL_TO_ID: Record<string, VoiceId> = {
 export interface SpeechGenerationResult {
   mp3Buffer: Buffer;
   contentType: "audio/mpeg";
+  publicUrl: string;
 }
 
 // ── Main function ────────────────────────────────────────────────────────────
+/**
+ * Generates speech via OpenAI TTS, converts it to MP3, stores it in Supabase
+ * Storage (service‑role client), and returns both the MP3 buffer and public URL.
+ */
 export async function generateSpeech(
   text: string,
   uiVoiceLabel: string,
-  language = "English",
+  language = "English"
 ): Promise<SpeechGenerationResult> {
   const voiceId = LABEL_TO_ID[uiVoiceLabel] ?? (uiVoiceLabel as VoiceId);
 
-  if (!VOICES.includes(voiceId as VoiceId)) {
+  if (!VOICES.includes(voiceId)) {
     throw new Error(`Unsupported voice: ${uiVoiceLabel}`);
   }
   if (!process.env.OPENAI_API_KEY) {
@@ -67,6 +79,8 @@ export async function generateSpeech(
       voice: voiceId,
       input: text,
       response_format: "wav",
+      // Include language for future-proofing if API supports it
+      language,
     }),
   });
 
@@ -99,5 +113,8 @@ export async function generateSpeech(
   const mp3Buffer = await fs.readFile(mp3Path);
   await fs.rm(tmpDir, { recursive: true, force: true });
 
-  return { mp3Buffer, contentType: "audio/mpeg" };
+  /* 3️⃣ Upload to Supabase Storage */
+  const publicUrl = await uploadAudio(`${uid}.mp3`, mp3Buffer, "audio/mpeg");
+
+  return { mp3Buffer, contentType: "audio/mpeg", publicUrl };
 }

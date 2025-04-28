@@ -10,7 +10,7 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   profile: UserProfile;
-  loading: boolean; // This will represent the initial auth check completion
+  loading: boolean; // Represents initial auth check completion
   login: (credentials: { email: string; password?: string; provider?: 'google' | 'github' }) => Promise<any>;
   signup: (credentials: { email: string; password?: string; options?: { data?: { name?: string; [key: string]: any }; emailRedirectTo?: string } }) => Promise<any>;
   logout: () => Promise<any>;
@@ -22,75 +22,95 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile>(null);
-  // Rename 'loading' to 'isAuthLoading' for clarity, start true
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // Start true
+
+  // --- Added Debug Log Function ---
+  const logAuthState = (message: string) => {
+    console.log(`[AuthContext] ${message} | Loading: ${isAuthLoading}, Session: ${!!session}, User: ${!!user?.id}`);
+  }
+  // ---
 
   const fetchProfile = useCallback(async (userId: string | undefined) => {
+    console.log("[AuthContext] fetchProfile called with userId:", userId); // Added log
     if (!userId) {
-      console.log("fetchProfile: No user ID, setting profile to null.");
+      console.log("[AuthContext] fetchProfile: No user ID, setting profile to null.");
       setProfile(null);
       return;
     }
-    console.log("fetchProfile: Fetching profile for user:", userId);
     try {
-      // Make sure you select all needed columns, including subscription ones
       const { data: userProfile, error, status } = await supabase
-        .from('users')
-        .select('*') // Adjust if you added more columns like subscription status etc.
+        .from('users') // Ensure this table name is correct
+        .select('*') // Fetch all columns, including subscription details
         .eq('id', userId)
         .single();
 
-      if (error && status !== 406) {
-        console.error('fetchProfile: Error fetching profile:', error);
+      if (error && status !== 406) { // 406 means no rows found, which is okay
+        console.error('[AuthContext] fetchProfile: Error fetching profile:', error);
         setProfile(null);
       } else if (userProfile) {
-        console.log("fetchProfile: Profile fetched:", userProfile);
+        console.log("[AuthContext] fetchProfile: Profile fetched:", userProfile);
         setProfile(userProfile);
       } else {
-        console.log("fetchProfile: No profile found for user.");
+        console.log("[AuthContext] fetchProfile: No profile found for user.");
         setProfile(null);
       }
     } catch(err) {
-      console.error("fetchProfile: Exception fetching profile:", err);
+      console.error("[AuthContext] fetchProfile: Exception fetching profile:", err);
       setProfile(null);
+      // Re-throw or handle as needed - might prevent loading state change if not caught in caller
+      // throw err; // Potentially problematic if it stops loading=false
     }
-  }, []);
+    console.log("[AuthContext] fetchProfile finished."); // Added log
+  }, []); // No dependencies needed if it only uses supabase client
 
   useEffect(() => {
-    console.log("Auth Provider Mount: Setting up auth listener and initial check.");
+    console.log("[AuthContext] AuthProvider Mount: Setting up auth listener and initial check.");
     setIsAuthLoading(true); // Start loading true on mount/setup
 
-    let isMounted = true; // Flag to prevent state updates after unmount
+    let isMounted = true;
 
     // --- Initial Session Check ---
     supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
-      if (!isMounted) return; // Don't proceed if unmounted
-      console.log("Initial session check completed. Session exists:", !!initialSession);
+      if (!isMounted) return;
+      console.log("[AuthContext] getSession .then() entered. Session:", !!initialSession); // <-- ADDED LOG
 
-       // Update state immediately based on initial check
       setSession(initialSession);
       const initialUser = initialSession?.user ?? null;
       setUser(initialUser);
-      await fetchProfile(initialUser?.id); // Fetch profile for initial user
 
-      // Important: Set loading false *after* the initial check and profile fetch completes
-      setIsAuthLoading(false);
-       console.log("Initial auth check finished, isAuthLoading set to false.");
+      console.log("[AuthContext] Calling initial fetchProfile..."); // <-- ADDED LOG
+      try {
+          await fetchProfile(initialUser?.id); // Fetch profile
+          console.log("[AuthContext] Initial fetchProfile completed."); // <-- ADDED LOG
+      } catch (profileError) {
+          console.error("[AuthContext] Error during initial fetchProfile:", profileError); // <-- ADDED LOG
+          // Decide if you still want to set loading false even if profile fails
+          // For now, we'll proceed to set loading false anyway for debugging visibility
+      }
+
+      console.log("[AuthContext] *** About to call setIsAuthLoading(false) in .then() ***"); // <-- ADDED LOG
+      if (isMounted) { // Double check mount status before setting state
+        setIsAuthLoading(false);
+        console.log("[AuthContext] Initial auth check finished, isAuthLoading is now false."); // Existing log modified
+        logAuthState("State after initial check (success path)"); // Log current state
+      }
 
     }).catch(err => {
       if (!isMounted) return;
-      console.error("Error getting initial session:", err);
-      setIsAuthLoading(false); // Stop loading even on error
+      console.error("[AuthContext] getSession() FAILED with error:", err); // <-- Enhanced Log
+      console.log("[AuthContext] *** About to call setIsAuthLoading(false) in .catch() ***"); // <-- ADDED LOG
+      if (isMounted) { // Double check mount status
+        setIsAuthLoading(false);
+        console.log("[AuthContext] Initial auth check FAILED, isAuthLoading is now false.");
+        logAuthState("State after initial check (error path)"); // Log current state
+      }
     });
 
     // --- Auth State Change Listener ---
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        if (!isMounted) return; // Don't process if unmounted
-        console.log(`Auth state changed: ${event}`, "New session exists:", !!newSession);
-
-        // No need to set loading true/false here unless the change takes significant time
-        // The initial load handles the main loading state. Subsequent changes should be quick.
+        if (!isMounted) return;
+        console.log(`[AuthContext] Auth state changed: ${event}`, "New session exists:", !!newSession);
 
         const currentUser = newSession?.user ?? null;
         const previousUserId = user?.id; // Get user state *before* setting it
@@ -98,73 +118,70 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setSession(newSession);
         setUser(currentUser);
 
-        // Fetch profile only if the user ID has actually changed or if there's a user now and wasn't before
         if (currentUser?.id !== previousUserId) {
-           console.log("User changed, fetching profile...");
+           console.log("[AuthContext] User changed, fetching profile...");
            await fetchProfile(currentUser?.id);
+           logAuthState(`State after ${event}`); // Log state after change
         } else {
-            console.log("Auth state changed but user ID is the same, profile fetch skipped.");
+            console.log("[AuthContext] Auth state changed but user ID is the same, profile fetch skipped.");
         }
       }
     );
 
     // Cleanup listener on component unmount
     return () => {
-      console.log("Auth Provider Unmount: Cleaning up listener.");
+      console.log("[AuthContext] AuthProvider Unmount: Cleaning up listener.");
       isMounted = false;
       authListener?.subscription.unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchProfile]); // fetchProfile is memoized, safe dependency
+  }, [fetchProfile]); // fetchProfile is memoized
 
-  // --- Auth Actions (Add logging, keep implementation simple) ---
+  // --- Auth Actions ---
   const login = async (credentials: { email: string; password?: string; provider?: 'google' | 'github' }) => {
-    console.log("AuthContext: Attempting login...");
-    // No need to manage loading state here; onAuthStateChange will handle UI updates
+    console.log("[AuthContext] Attempting login...");
     let error = null;
     if (credentials.provider) {
-       ({ error } = await supabase.auth.signInWithOAuth({ provider: credentials.provider }));
+        ({ error } = await supabase.auth.signInWithOAuth({ provider: credentials.provider }));
     } else if (credentials.password) {
-       ({ error } = await supabase.auth.signInWithPassword({ email: credentials.email, password: credentials.password }));
+        ({ error } = await supabase.auth.signInWithPassword({ email: credentials.email, password: credentials.password }));
     } else {
-       throw new Error("Password or provider required for login.");
+        throw new Error("Password or provider required for login.");
     }
     if (error) {
-       console.error("AuthContext: Login error:", error);
-       throw error; // Let the UI handle the error display
+        console.error("[AuthContext] Login error:", error);
+        throw error;
     }
-     console.log("AuthContext: Login initiated/successful (listener will update state).");
-   };
-
-   const signup = async (credentials: { email: string; password?: string; options?: { data?: { name?: string; [key: string]: any }; emailRedirectTo?: string } }) => {
-     console.log("AuthContext: Attempting signup...");
-     const userData = credentials.options?.data ?? {};
-     const { error } = await supabase.auth.signUp({
-       email: credentials.email,
-       password: credentials.password,
-       options: { ...credentials.options, data: userData }
-     });
-     if (error) {
-       console.error("AuthContext: Signup error:", error);
-       throw error;
-     }
-     console.log("AuthContext: Signup initiated/successful (listener will update state).");
-   };
-
-   const logout = async () => {
-     console.log("AuthContext: Attempting logout...");
-     const { error } = await supabase.auth.signOut();
-     if (error) {
-       console.error("AuthContext: Logout error:", error);
-       throw error;
-     }
-      // Manually clear profile on logout for immediate UI update if needed,
-      // although onAuthStateChange should handle it.
-      setProfile(null);
-      console.log("AuthContext: Logout successful (listener will update state).");
+      console.log("[AuthContext] Login initiated/successful (listener will update state).");
     };
 
-  // Provide the renamed 'loading' state
+    const signup = async (credentials: { email: string; password?: string; options?: { data?: { name?: string; [key: string]: any }; emailRedirectTo?: string } }) => {
+      console.log("[AuthContext] Attempting signup...");
+      const userData = credentials.options?.data ?? {};
+      const { error } = await supabase.auth.signUp({
+        email: credentials.email,
+        password: credentials.password,
+        options: { ...credentials.options, data: userData }
+      });
+      if (error) {
+        console.error("[AuthContext] Signup error:", error);
+        throw error;
+      }
+      console.log("[AuthContext] Signup initiated/successful (listener will update state).");
+    };
+
+    const logout = async () => {
+      console.log("[AuthContext] Attempting logout...");
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("[AuthContext] Logout error:", error);
+        throw error;
+      }
+      // Manually clear profile on logout
+      setProfile(null);
+      console.log("[AuthContext] Logout successful (listener will update state).");
+    };
+
   const value = {
     session,
     user,

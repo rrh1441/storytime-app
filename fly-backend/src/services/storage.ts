@@ -1,7 +1,7 @@
 // services/storage.ts
 // --------------------------------------------------------------------------
-// Shared helper for uploading files to Supabase Storage using *service‑role*
-// credentials. This client bypasses RLS on storage.objects by design.
+// Shared helper for uploading files to Supabase Storage using *service-role*
+// credentials. Bucket name is configurable via env; defaults to `story_assets`.
 // --------------------------------------------------------------------------
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -9,7 +9,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // ---------------------------------------------------------------------------
 // Environment validation – fail fast if mis‑configured.
 // ---------------------------------------------------------------------------
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STORY_AUDIO_BUCKET } =
+  process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
@@ -35,7 +36,10 @@ const supabaseService: SupabaseClient = createClient(
   }
 );
 
-const BUCKET = "story-audio" as const;
+// ---------------------------------------------------------------------------
+// Bucket config – set STORY_AUDIO_BUCKET in env for non‑default name
+// ---------------------------------------------------------------------------
+const BUCKET = (STORY_AUDIO_BUCKET || "story_assets") as const;
 
 /**
  * Uploads a Buffer to the configured Storage bucket and returns a public URL.
@@ -56,11 +60,14 @@ export async function uploadAudio(
     throw new Error(`Supabase upload error: ${error.message}`);
   }
 
-  const { data } = supabaseService.storage.from(BUCKET).getPublicUrl(objectPath);
-  if (!data.publicUrl) {
+  const {
+    data: { publicUrl },
+  } = supabaseService.storage.from(BUCKET).getPublicUrl(objectPath);
+
+  if (!publicUrl) {
     throw new Error("Failed to retrieve public URL for uploaded audio.");
   }
-  return data.publicUrl;
+  return publicUrl;
 }
 
 export { supabaseService };

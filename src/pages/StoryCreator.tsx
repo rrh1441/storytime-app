@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// StoryCreator.tsx  •  2025-04-28  (full file, no truncation)
+// StoryCreator.tsx  •  2025-04-28  (full file, zero truncation)
 // -----------------------------------------------------------------------------
 // • Scroll-to-top on tab switch
-// • Share tab: Play/Pause, Copy, Download, Open (four large buttons)
+// • Share tab: four pill-style buttons (Play/Pause, Copy, Download, Open)
 // • Hidden <audio> element controlled programmatically
 // • Fully lint-clean, type-safe React + Tailwind code
 // -----------------------------------------------------------------------------
@@ -12,7 +12,6 @@ import React, {
   useRef,
   useState,
   KeyboardEvent,
-  MouseEvent,
 } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -94,64 +93,7 @@ const SUPPORTED_VOICES = [
 ] as const;
 
 const SUPPORTED_LANGUAGES = [
-  // (list shortened for brevity, but retained in code)
-  "Afrikaans",
-  "Arabic",
-  "Armenian",
-  "Azerbaijani",
-  "Belarusian",
-  "Bosnian",
-  "Bulgarian",
-  "Catalan",
-  "Chinese",
-  "Croatian",
-  "Czech",
-  "Danish",
-  "Dutch",
-  "English",
-  "Estonian",
-  "Finnish",
-  "French",
-  "Galician",
-  "German",
-  "Greek",
-  "Hebrew",
-  "Hindi",
-  "Hungarian",
-  "Icelandic",
-  "Indonesian",
-  "Italian",
-  "Japanese",
-  "Kannada",
-  "Kazakh",
-  "Korean",
-  "Latvian",
-  "Lithuanian",
-  "Macedonian",
-  "Malay",
-  "Marathi",
-  "Maori",
-  "Nepali",
-  "Norwegian",
-  "Persian",
-  "Polish",
-  "Portuguese",
-  "Romanian",
-  "Russian",
-  "Serbian",
-  "Slovak",
-  "Slovenian",
-  "Spanish",
-  "Swahili",
-  "Swedish",
-  "Tagalog",
-  "Tamil",
-  "Thai",
-  "Turkish",
-  "Ukrainian",
-  "Urdu",
-  "Vietnamese",
-  "Welsh",
+  "Afrikaans","Arabic","Armenian","Azerbaijani","Belarusian","Bosnian","Bulgarian","Catalan","Chinese","Croatian","Czech","Danish","Dutch","English","Estonian","Finnish","French","Galician","German","Greek","Hebrew","Hindi","Hungarian","Icelandic","Indonesian","Italian","Japanese","Kannada","Kazakh","Korean","Latvian","Lithuanian","Macedonian","Malay","Marathi","Maori","Nepali","Norwegian","Persian","Polish","Portuguese","Romanian","Russian","Serbian","Slovak","Slovenian","Spanish","Swahili","Swedish","Tagalog","Tamil","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Welsh",
 ] as const;
 
 /* ─────────── Zod schema ─────────── */
@@ -176,7 +118,7 @@ const StoryCreator: React.FC = () => {
   const { user } = useAuth();
   const isSubscriber = Boolean(user?.user_metadata?.subscriber);
 
-  /* ── state ─────────────────────────────────────────────────────────── */
+  /* ── state ──────────────────────────────────────────────── */
   const [storyContent, setStoryContent] = useState("");
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(
     null,
@@ -184,7 +126,7 @@ const StoryCreator: React.FC = () => {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
 
-  /* ── scroll-to-top on tab switch ────────────────────────────────────── */
+  /* ── scroll-to-top on tab switch ────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (pageTopRef.current) {
@@ -194,7 +136,7 @@ const StoryCreator: React.FC = () => {
     }
   }, [activeTab]);
 
-  /* ── audio handling ─────────────────────────────────────────────────── */
+  /* ── audio handling ─────────────────────────────────────── */
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -210,22 +152,27 @@ const StoryCreator: React.FC = () => {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().catch(() => {
-        toast({
-          title: "Playback error",
-          description: "Unable to play audio.",
-          variant: "destructive",
-        });
-      });
-      setIsPlaying(true);
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() =>
+          toast({
+            title: "Playback error",
+            description: "Unable to play audio.",
+            variant: "destructive",
+          }),
+        );
     }
   };
 
   const handleCopyLink = () => {
     if (!generatedAudioUrl) return;
-    navigator.clipboard.writeText(generatedAudioUrl).then(() => {
-      toast({ title: "Link copied", description: "URL copied to clipboard." });
-    });
+    navigator.clipboard.writeText(generatedAudioUrl).then(() =>
+      toast({
+        title: "Link copied",
+        description: "URL copied to clipboard.",
+      }),
+    );
   };
 
   const handleDownload = () => {
@@ -244,7 +191,7 @@ const StoryCreator: React.FC = () => {
     window.open(generatedAudioUrl, "_blank", "noopener,noreferrer");
   };
 
-  /* ── react-hook-form ────────────────────────────────────────────────── */
+  /* ── form ──────────────────────────────────────────────── */
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -256,7 +203,7 @@ const StoryCreator: React.FC = () => {
     mode: "onBlur",
   });
 
-  /* ── mutations ─────────────────────────────────────────────────────── */
+  /* ── mutations ──────────────────────────────────────────── */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
       const r = await fetch(`${API_BASE}/generate-story`, {
@@ -309,7 +256,7 @@ const StoryCreator: React.FC = () => {
       }),
   });
 
-  /* ── helpers ───────────────────────────────────────────────────────── */
+  /* ── helpers ───────────────────────────────────────────── */
   const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (e.key !== "Enter") return;
     const match = THEME_SUGGESTIONS.find((t) =>
@@ -323,9 +270,12 @@ const StoryCreator: React.FC = () => {
   ).length;
   const watchLanguage = form.watch("language");
 
-  /* ── UI ─────────────────────────────────────────────────────────────── */
+  /* ── UI ─────────────────────────────────────────────────── */
   return (
-    <div ref={pageTopRef} className="min-h-screen bg-storytime-background py-12">
+    <div
+      ref={pageTopRef}
+      className="min-h-screen bg-storytime-background py-12"
+    >
       <div className="container mx-auto px-6">
         <h1 className="mb-4 text-3xl font-display font-bold text-gray-700">
           Story Creator Studio
@@ -357,7 +307,7 @@ const StoryCreator: React.FC = () => {
                 </TabsTrigger>
               </TabsList>
 
-              {/* ───────────────────────────────────────────────── parameters */}
+              {/* ───────────────────────────── parameters */}
               <TabsContent value="parameters">
                 <Card>
                   <CardHeader>
@@ -568,7 +518,7 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* ─────────────────────────────────────────────────── edit/preview */}
+              {/* ───────────────────────────── edit / preview */}
               <TabsContent value="edit">
                 <Card>
                   <CardHeader>
@@ -608,7 +558,7 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* ───────────────────────────────────────────────────── voice/audio */}
+              {/* ───────────────────────────── voice / audio */}
               <TabsContent value="voice">
                 <Card>
                   <CardHeader>
@@ -703,7 +653,7 @@ const StoryCreator: React.FC = () => {
                 </Card>
               </TabsContent>
 
-              {/* ───────────────────────────────────────────────────────── share */}
+              {/* ───────────────────────────── share */}
               <TabsContent value="share">
                 <Card>
                   <CardHeader>
@@ -713,57 +663,52 @@ const StoryCreator: React.FC = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="flex flex-wrap justify-center gap-4">
                       {/* Play / Pause */}
                       <Button
-                        variant="outline"
-                        className="flex flex-col items-center justify-center py-6"
+                        aria-label={isPlaying ? "Pause audio" : "Play audio"}
+                        className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
                         onClick={handlePlayPause}
                         disabled={!generatedAudioUrl}
                       >
                         {isPlaying ? (
-                          <>
-                            <PauseCircle className="mb-1 h-8 w-8" />
-                            Pause
-                          </>
+                          <PauseCircle className="h-6 w-6" />
                         ) : (
-                          <>
-                            <PlayCircle className="mb-1 h-8 w-8" />
-                            Play
-                          </>
+                          <PlayCircle className="h-6 w-6" />
                         )}
+                        {isPlaying ? "Pause" : "Play"}
                       </Button>
 
-                      {/* Copy Link */}
+                      {/* Copy link */}
                       <Button
-                        variant="outline"
-                        className="flex flex-col items-center justify-center py-6"
+                        aria-label="Copy link"
+                        className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleCopyLink}
                         disabled={!generatedAudioUrl}
                       >
-                        <CopyIcon className="mb-1 h-8 w-8" />
+                        <CopyIcon className="h-6 w-6" />
                         Copy
                       </Button>
 
                       {/* Download */}
                       <Button
-                        variant="outline"
-                        className="flex flex-col items-center justify-center py-6"
+                        aria-label="Download MP3"
+                        className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleDownload}
                         disabled={!generatedAudioUrl}
                       >
-                        <DownloadIcon className="mb-1 h-8 w-8" />
+                        <DownloadIcon className="h-6 w-6" />
                         Download
                       </Button>
 
-                      {/* Open in New Tab */}
+                      {/* Open in new tab */}
                       <Button
-                        variant="outline"
-                        className="flex flex-col items-center justify-center py-6"
+                        aria-label="Open in new tab"
+                        className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
                         onClick={handleOpen}
                         disabled={!generatedAudioUrl}
                       >
-                        <LinkIcon className="mb-1 h-8 w-8" />
+                        <LinkIcon className="h-6 w-6" />
                         Open
                       </Button>
                     </div>

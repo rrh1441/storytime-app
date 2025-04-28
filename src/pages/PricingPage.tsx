@@ -25,12 +25,12 @@ if (STRIPE_PUBLISHABLE_KEY) {
 const plans = [
   {
     id: 'starter',
-    name: 'Story Starter',
+    name: 'StoryTime Starter',
     priceId: 'price_1R88J5KSaqiJUYkjbH0R39VO', // Ensure this matches your Stripe Price ID
     priceMonthly: 5,
-    credits: 10,
+    credits: 15,
     features: [
-      '10 Story Credits per Month',
+      '15 minutes of custom stories per Month',
       'Save Stories to Library',
     ],
     cta: 'Get Started',
@@ -38,16 +38,15 @@ const plans = [
   },
   {
     id: 'pro',
-    name: 'Story Pro',
+    name: 'Super StoryTime',
     priceId: 'price_1R9u5HKSaqiJUYkjnXkKiJkS', // Ensure this matches your Stripe Price ID
     priceMonthly: 15,
-    credits: 100,
+    credits: 60,
     features: [
-      '100 Story Credits per Month',
+      '60 minutes of custom stories per Month',
       'Priority Support',
-      'Record Your Own Voice (Coming Soon!)'
     ],
-    cta: 'Go Pro',
+    cta: 'Get ',
     popular: true,
   },
 ];

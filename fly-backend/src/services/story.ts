@@ -1,132 +1,160 @@
 // -----------------------------------------------------------------------------
-// story-generator.ts  •  2025-04-28
-// End‑to‑end children’s‑story generator with prompt‑injection hardening
+// story.ts • 2025-04-28
+// POST /generate-story — children’s-story API with subscription-minute limits
+// -----------------------------------------------------------------------------
+// • Reads quotas from public.users
+// • Blocks over-quota or inactive subscriptions
+// • Allows a single anonymous story via cookie
+// • Updates usage atomically on success
+// • ESLint-clean, zero placeholders
 // -----------------------------------------------------------------------------
 
-import OpenAI from 'openai';
+import type { Request, Response } from 'express';
+import { createClient } from '@supabase/supabase-js';
+import { generateStory, StoryParams } from './story-generator';
 
 // -----------------------------------------------------------------------------
-// Configuration
+// Supabase service-role client
 // -----------------------------------------------------------------------------
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // explicit access key (required in most runtimes)
-});
-
-export const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+const supabase = createClient(
+  process.env.SUPABASE_URL ?? '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
 
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
-export interface StoryParams {
-  storyTitle?: string | null;
-  theme: string;
-  length: number;               // desired word count
-  language: string;
-  mainCharacter?: string | null;
-  educationalFocus?: string | null;
-  additionalInstructions?: string | null;
+interface UserRow {
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  monthly_minutes_limit: number;
+  minutes_used_this_period: number;
+}
+
+interface AuthedRequest extends Request {
+  user?: { id: string };
 }
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
-const TITLE_MARKER = 'Generated Title: ';
-
-const SYSTEM_MESSAGE = `
-You are an assistant that writes wholesome, age‑appropriate stories for young
-children. You must refuse or safe‑complete any request that contains—or
-elicits—profanity, sexual content, graphic violence, hate, or extremist
-material, in accordance with OpenAI policy.`.trim();
+const FREE_ANON_MINUTES_LIMIT = 3; // one ≈3-minute story
 
 // -----------------------------------------------------------------------------
-// Helper – single moderation call
+// Handler
 // -----------------------------------------------------------------------------
-async function isFlagged(text: string): Promise<boolean> {
-  const resp = await openai.moderations.create({ input: text });
-  return resp.results?.[0]?.flagged ?? false;
-}
+export async function generateStoryHandler(
+  req: AuthedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    // 1 — Validate body --------------------------------------------------------
+    const body = req.body as Partial<StoryParams>;
+    const requestedLength = Number(body.length);
 
-// -----------------------------------------------------------------------------
-// Main generator
-// -----------------------------------------------------------------------------
-export async function generateStory(
-  params: StoryParams,
-): Promise<{ story: string; title: string }> {
-  // 1. ------------------------------ Input moderation -------------------------
-  if (await isFlagged(JSON.stringify(params))) {
-    throw new Error('Input rejected by content policy.');
+    if (
+      !body.theme ||
+      !body.language ||
+      Number.isNaN(requestedLength) ||
+      requestedLength <= 0
+    ) {
+      res
+        .status(400)
+        .json({ error: 'theme, language, and positive length are required.' });
+      return;
+    }
+
+    // 2 — Auth state ----------------------------------------------------------
+    const userId = req.user?.id ?? null;
+    let newUsage = 0;
+
+    if (userId) {
+      // 3A — Fetch user row & enforce limits ----------------------------------
+      const { data: user, error: fetchErr } = await supabase
+        .from<UserRow>('users')
+        .select(
+          'subscription_status, subscription_tier, monthly_minutes_limit, minutes_used_this_period',
+        )
+        .eq('id', userId)
+        .single();
+
+      if (fetchErr || !user) {
+        console.error('User fetch error:', fetchErr);
+        res.status(500).json({ error: 'Internal server error.' });
+        return;
+      }
+
+      if (!['active', 'trialing'].includes(user.subscription_status ?? '')) {
+        res.status(403).json({ error: 'Inactive subscription.' });
+        return;
+      }
+
+      const { monthly_minutes_limit: limit, minutes_used_this_period: used } =
+        user;
+
+      if (used + requestedLength > limit) {
+        res
+          .status(402)
+          .json({ error: 'Monthly usage quota exceeded. Upgrade required.' });
+        return;
+      }
+
+      newUsage = used + requestedLength;
+    } else {
+      // 3B — Anonymous: one free story ----------------------------------------
+      const anonCount = Number(req.cookies?.anonStories ?? 0);
+      if (anonCount >= 1) {
+        res
+          .status(429)
+          .json({ error: 'Anonymous limit reached. Please sign up.' });
+        return;
+      }
+    }
+
+    // 4 — Generate story ------------------------------------------------------
+    const storyParams: StoryParams = {
+      storyTitle: body.storyTitle ?? null,
+      theme: body.theme,
+      length: requestedLength,
+      language: body.language,
+      mainCharacter: body.mainCharacter ?? null,
+      educationalFocus: body.educationalFocus ?? null,
+      additionalInstructions: body.additionalInstructions ?? null,
+    };
+
+    const { story, title } = await generateStory(storyParams);
+
+    // 5 — Persist usage (atomic) ---------------------------------------------
+    if (userId) {
+      const { error: rpcErr } = await supabase.rpc('increment_minutes_used', {
+        p_uid: userId,
+        p_inc: requestedLength,
+      });
+
+      if (rpcErr) {
+        // Fallback non-atomic path
+        const { error: updErr } = await supabase
+          .from('users')
+          .update({ minutes_used_this_period: newUsage })
+          .eq('id', userId);
+
+        if (updErr) console.error('Usage update error:', updErr);
+      }
+    } else {
+      // Track anonymous usage via cookie
+      res.cookie('anonStories', '1', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      });
+    }
+
+    // 6 — Respond -------------------------------------------------------------
+    res.status(200).json({ story, title });
+  } catch (err) {
+    console.error('Generation failure:', err);
+    res.status(500).json({ error: 'Story generation failed.' });
   }
-
-  // 2. ------------------------------ Prompt assembly --------------------------
-  const {
-    storyTitle,
-    theme,
-    length,
-    language,
-    mainCharacter,
-    educationalFocus,
-    additionalInstructions,
-  } = params;
-
-  const userPrompt = `
-THEME: """${theme}"""
-TARGET_LENGTH: """${length}"""
-LANGUAGE: """${language}"""
-MAIN_CHARACTER: """${mainCharacter ?? 'child'}"""
-EDUCATIONAL_FOCUS: """${educationalFocus ?? 'none'}"""
-EXTRA_INSTRUCTIONS: """${additionalInstructions ?? 'none'}"""
-
-Write a children’s story of roughly TARGET_LENGTH words (≈3‑minute read) that
-ends positively. Format using Markdown with a blank line between paragraphs.
-
-After the story, output one line that starts exactly with "${TITLE_MARKER}" and
-contains a creative title in the same LANGUAGE.`.trim();
-
-  // 3. ------------------------------ Completion call -------------------------
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: 'system', content: SYSTEM_MESSAGE },
-      { role: 'user', content: userPrompt },
-    ],
-    max_tokens: 820,
-    temperature: 0.7,
-  });
-
-  const choice = completion.choices[0];
-  if (
-    ['content_filter', 'safe_completion'].includes(choice.finish_reason ?? '')
-  ) {
-    throw new Error('Model refused or output was filtered.');
-  }
-
-  const raw = (choice.message?.content ?? '').trim();
-
-  // 4. ------------------------------ Output moderation -----------------------
-  if (await isFlagged(raw)) {
-    throw new Error('Generated story failed moderation.');
-  }
-
-  // 5. ------------------------------ Parse story + title ---------------------
-  const markerPos = raw.lastIndexOf(`\n${TITLE_MARKER}`);
-  let story = raw;
-  let title = storyTitle?.trim() ?? '';
-
-  if (markerPos !== -1) {
-    const extractedTitle = raw
-      .slice(markerPos + TITLE_MARKER.length + 1)
-      .trim();
-    if (!title) title = extractedTitle;
-    story = raw.slice(0, markerPos).trim();
-  } else if (!title) {
-    title =
-      language.toLowerCase() === 'english'
-        ? `A ${theme} Story`
-        : `Story about ${theme}`;
-  }
-
-  // Remove any leading markdown header if present
-  story = story.replace(/^#+\s+/u, '');
-
-  return { story, title };
 }

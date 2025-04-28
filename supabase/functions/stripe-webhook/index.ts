@@ -4,14 +4,14 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@^2.40.0';
 import Stripe from 'npm:stripe@^15.0.0';
 
-// Define the structure of the user record we'll be updating
-// Adjust based on your actual 'users' table columns
+// Define the structure of the user profile/record we'll be updating
+// Ensure these columns exist in your Supabase table (e.g., 'profiles' or 'users')
 interface UserProfileUpdate {
   stripe_customer_id?: string | null;
-  subscription_status?: string | null; // e.g., 'active', 'canceled', 'past_due'
-  active_plan_price_id?: string | null;
+  subscription_status?: string | null; // e.g., 'active', 'trialing', 'canceled', 'past_due'
+  active_plan_price_id?: string | null; // The Stripe Price ID of the active plan
   subscription_current_period_end?: string | null; // ISO string date
-  story_credits?: number; // Use 'increment' for atomic updates if possible
+  monthly_minutes_limit?: number | null; // Added: Stores the minute limit based on plan
 }
 
 // Get secrets from environment variables
@@ -24,34 +24,41 @@ if (!supabaseUrl || !supabaseServiceKey || !stripeSecretKey || !stripeWebhookSec
   console.error('Webhook: Missing required environment variables.');
 }
 
-const stripe = new Stripe(stripeSecretKey!, {
+// Initialize Stripe client
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
   apiVersion: '2024-04-10',
   httpClient: Stripe.createFetchHttpClient(),
-});
+}) : null;
 
-// Initialize Supabase Admin Client (uses Service Role Key)
-// We need admin privileges to update any user's record based on webhook data
-const supabaseAdmin: SupabaseClient = createClient(supabaseUrl!, supabaseServiceKey!);
+// Initialize Supabase Admin Client
+const supabaseAdmin: SupabaseClient | null = (supabaseUrl && supabaseServiceKey)
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null;
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*', // Not strictly needed for Stripe webhooks but good practice for OPTIONS
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, Stripe-Signature',
 };
 
-// Mapping Price IDs to Credit Amounts
-const PLAN_CREDITS: Record<string, number> = {
-    'price_1R88J5KSaqiJUYkjbH0R39VO': 10,  // Story Starter
-    'price_1R9u5HKSaqiJUYkjnXkKiJkS': 100, // Story Pro
-    // Add test price IDs if needed
+// Mapping Price IDs to Monthly Minute Allocations
+// MAKE SURE THESE PRICE IDs MATCH YOUR STRIPE SETUP EXACTLY
+const PLAN_MINUTE_ALLOCATION: Record<string, number> = {
+    'price_1R88J5KSaqiJUYkjbH0R39VO': 15,  // Starter StoryTime ($4.99)
+    'price_1R9u5HKSaqiJUYkjnXkKiJkS': 60, // Super StoryTime ($14.99)
+    'price_1RHXrmKSaqiJUYkjfie7WbY1': 300, // Studio StoryTime ($49.99)
+    // Add any other relevant Price IDs (e.g., test environment prices)
 };
 
-console.log("stripe-webhook function initialized.");
+console.log("stripe-webhook function initialized (with minute limits).");
 
 serve(async (req) => {
-   // Handle CORS preflight request
    if (req.method === 'OPTIONS') {
-    console.log("Handling OPTIONS request for webhook");
+    console.log("Handling OPTIONS request");
     return new Response('ok', { headers: corsHeaders });
+   }
+   if (!stripe || !supabaseAdmin) {
+     console.error("Webhook Error: Stripe or Supabase Admin client not initialized.");
+     return new Response(JSON.stringify({ error: 'Webhook service configuration error.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
    }
    if (req.method !== 'POST') {
      console.log(`Webhook: Unsupported method: ${req.method}`);
@@ -59,33 +66,28 @@ serve(async (req) => {
    }
 
   const signature = req.headers.get('Stripe-Signature');
-  const body = await req.text(); // Read raw body for verification
+  const body = await req.text();
 
   if (!signature) {
     console.error("Webhook Error: Missing Stripe-Signature header.");
-    return new Response(JSON.stringify({ error: 'Missing Stripe signature.' }), { status: 400 });
+    return new Response(JSON.stringify({ error: 'Missing Stripe signature.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
   if (!stripeWebhookSecret) {
      console.error("Webhook Error: Missing STRIPE_WEBHOOK_SECRET environment variable.");
-     return new Response(JSON.stringify({ error: 'Webhook secret not configured.' }), { status: 500 });
+     return new Response(JSON.stringify({ error: 'Webhook secret not configured.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
   let event: Stripe.Event;
 
   try {
-    // Verify webhook signature
-    event = await stripe.webhooks.constructEventAsync(
-      body,
-      signature,
-      stripeWebhookSecret
-    );
+    event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret);
     console.log(`Webhook Received - Event ID: ${event.id}, Type: ${event.type}`);
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);
-    return new Response(JSON.stringify({ error: `Webhook signature verification failed: ${err.message}` }), { status: 400 });
+    return new Response(JSON.stringify({ error: `Webhook signature verification failed: ${err.message}` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  const dataObject = event.data.object as any; // Cast for easier access, add specific types if preferred
+  const dataObject = event.data.object as any;
 
   try {
     let supabaseUserId: string | null = null;
@@ -101,36 +103,29 @@ serve(async (req) => {
         const session = dataObject as Stripe.Checkout.Session;
         console.log(`Handling checkout.session.completed for session: ${session.id}`);
         stripeCustomerId = typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
-        supabaseUserId = session.metadata?.supabase_user_id ?? null; // Get from session metadata first
+        supabaseUserId = session.metadata?.supabase_user_id ?? null;
         const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id ?? null;
 
-        if (!stripeCustomerId || !subscriptionId) {
-           console.error("Missing customer or subscription ID in checkout session completed event.");
-           break; // Acknowledge event but can't process fully
-        }
+        if (!stripeCustomerId) { console.error("Missing customer ID"); break; }
+        if (!subscriptionId) { console.warn(`Missing subscription ID in checkout ${session.id}`); updates = { stripe_customer_id: stripeCustomerId }; break; }
+        if (!supabaseUserId) { console.warn(`Missing supabase_user_id in metadata for checkout ${session.id}.`); }
 
-        // Fetch the subscription to get details like period end and price ID
-        relevantSubscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price'] });
-        if (!relevantSubscription) {
-            console.error(`Could not retrieve subscription ${subscriptionId} after checkout.`);
-            break;
-        }
+        try {
+            relevantSubscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price'] });
+        } catch (retrieveError) { console.error(`Error retrieving subscription ${subscriptionId}: ${retrieveError.message}`); updates = { stripe_customer_id: stripeCustomerId }; break; }
+        if (!relevantSubscription) { console.error(`Could not retrieve subscription ${subscriptionId}`); updates = { stripe_customer_id: stripeCustomerId }; break; }
 
         relevantPriceId = relevantSubscription.items.data[0]?.price?.id ?? null;
-        const creditsToAdd = relevantPriceId ? PLAN_CREDITS[relevantPriceId] ?? 0 : 0;
+        const minuteLimit = relevantPriceId ? PLAN_MINUTE_ALLOCATION[relevantPriceId] ?? null : null; // Get limit from map
 
         updates = {
           stripe_customer_id: stripeCustomerId,
-          subscription_status: relevantSubscription.status, // Should be 'active' or 'trialing'
+          subscription_status: relevantSubscription.status,
           active_plan_price_id: relevantPriceId,
           subscription_current_period_end: relevantSubscription.current_period_end ? new Date(relevantSubscription.current_period_end * 1000).toISOString() : null,
-          // Atomically increment credits if possible, otherwise set directly (less safe with retries)
-          // story_credits: supabase.sql`story_credits + ${creditsToAdd}` // Needs SupabaseClient instance
+          monthly_minutes_limit: minuteLimit, // Set the minute limit
         };
-
-         console.log(`Checkout completed. Granting ${creditsToAdd} credits. Updates prepared:`, updates);
-         // Note: Granting credits here might be redundant if invoice.payment_succeeded is also handled
-
+        console.log(`Checkout completed. Minute limit set to ${minuteLimit}. Updates prepared:`, JSON.stringify(updates));
         break;
       }
 
@@ -140,148 +135,116 @@ serve(async (req) => {
         stripeCustomerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
         const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id ?? null;
 
-        if (!stripeCustomerId || !subscriptionId) {
-            console.error("Missing customer or subscription ID in invoice payment succeeded event.");
-            break;
-        }
-        // Avoid granting credits for one-off invoices etc.
+        if (!stripeCustomerId || !subscriptionId) { console.error("Missing customer or subscription ID"); break; }
+
+        // Update status and period end on renewals
         if (invoice.billing_reason === 'subscription_cycle' || invoice.billing_reason === 'subscription_create') {
-            relevantSubscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price'] });
-            if (!relevantSubscription) {
-                 console.error(`Could not retrieve subscription ${subscriptionId} after invoice payment.`);
-                 break;
-            }
-            relevantPriceId = relevantSubscription.items.data[0]?.price?.id ?? null;
-            const creditsToAdd = relevantPriceId ? PLAN_CREDITS[relevantPriceId] ?? 0 : 0;
+             try { relevantSubscription = await stripe.subscriptions.retrieve(subscriptionId); }
+             catch (retrieveError) { console.error(`Error retrieving subscription ${subscriptionId}: ${retrieveError.message}`); break; }
+             if (!relevantSubscription) { console.error(`Could not retrieve subscription ${subscriptionId}`); break; }
 
-            // We only *really* need to update the credits and period end on successful payment
+             // We could also re-fetch the price ID and reaffirm the minute limit, but it shouldn't change on a simple renewal
+             // const currentPriceId = relevantSubscription.items.data[0]?.price?.id ?? null;
+             // const currentMinuteLimit = currentPriceId ? PLAN_MINUTE_ALLOCATION[currentPriceId] ?? null : null;
+
             updates = {
-                 subscription_status: relevantSubscription.status, // Reaffirm status
+                 subscription_status: relevantSubscription.status,
                  subscription_current_period_end: relevantSubscription.current_period_end ? new Date(relevantSubscription.current_period_end * 1000).toISOString() : null,
-                 // story_credits: supabase.sql`story_credits + ${creditsToAdd}` // Atomic increment
+                 // monthly_minutes_limit: currentMinuteLimit // Optional: reaffirm limit
             };
-            console.log(`Subscription payment succeeded. Granting ${creditsToAdd} credits. Updates prepared:`, updates);
-
-             // *** TEMPORARY WORKAROUND FOR ATOMIC INCREMENT ***
-            // Since we can't easily use supabase.sql here, fetch current credits and add
-            if (creditsToAdd > 0) {
-                const { data: currentProfile, error: fetchErr } = await supabaseAdmin
-                    .from('users')
-                    .select('story_credits')
-                    .eq('stripe_customer_id', stripeCustomerId)
-                    .single();
-
-                if (fetchErr && fetchErr.code !== 'PGRST116') {
-                    console.error(`Webhook Error: Failed to fetch current credits for customer ${stripeCustomerId}`, fetchErr);
-                } else {
-                    const currentCredits = currentProfile?.story_credits ?? 0;
-                    updates.story_credits = currentCredits + creditsToAdd;
-                    console.log(`Workspaceed current credits: ${currentCredits}, New total: ${updates.story_credits}`);
-                }
-            }
-            // *** END TEMPORARY WORKAROUND ***
-
+            console.log(`Subscription payment succeeded. Updates prepared:`, JSON.stringify(updates));
         } else {
-            console.log(`Skipping credit grant for invoice reason: ${invoice.billing_reason}`);
+            console.log(`Skipping profile update for invoice reason: ${invoice.billing_reason}`);
         }
         break;
       }
 
       case 'customer.subscription.updated': {
+        // Handles upgrades, downgrades, cancellations set for period end, etc.
         const subscription = dataObject as Stripe.Subscription;
         console.log(`Handling customer.subscription.updated for subscription: ${subscription.id}, status: ${subscription.status}`);
         stripeCustomerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id ?? null;
-        relevantPriceId = subscription.items.data[0]?.price?.id ?? null;
+        relevantPriceId = subscription.items?.data[0]?.price?.id ?? null; // Get current price ID
+        const newMinuteLimit = relevantPriceId ? PLAN_MINUTE_ALLOCATION[relevantPriceId] ?? null : null; // Determine new limit
 
-        if (!stripeCustomerId) {
-             console.error("Missing customer ID in subscription updated event.");
-             break;
-        }
+        if (!stripeCustomerId) { console.error("Missing customer ID"); break; }
 
         updates = {
           subscription_status: subscription.status,
-          active_plan_price_id: relevantPriceId,
+          active_plan_price_id: relevantPriceId, // Store the new price ID
           subscription_current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+          monthly_minutes_limit: newMinuteLimit, // Update the minute limit
         };
-        // If subscription was canceled but will remain active until period end,
-        // the status might still be 'active' but `cancel_at_period_end` will be true.
+
         if (subscription.cancel_at_period_end) {
-            console.log(`Subscription ${subscription.id} scheduled for cancellation at period end.`);
-            // You might set a specific status like 'pending_cancellation' if needed
-            // updates.subscription_status = 'pending_cancellation';
+            console.log(`Subscription ${subscription.id} scheduled for cancellation at period end (${updates.subscription_current_period_end}). Limit remains ${newMinuteLimit} until then.`);
         }
-        console.log("Subscription updated. Updates prepared:", updates);
+        console.log(`Subscription updated. Minute limit set to ${newMinuteLimit}. Updates prepared:`, JSON.stringify(updates));
         break;
       }
 
       case 'customer.subscription.deleted': {
+        // Handles immediate cancellations or cancellations after period end has passed.
         const subscription = dataObject as Stripe.Subscription;
-        console.log(`Handling customer.subscription.deleted for subscription: ${subscription.id}`);
+        console.log(`Handling customer.subscription.deleted for subscription: ${subscription.id}, status: ${subscription.status}`);
         stripeCustomerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id ?? null;
 
-        if (!stripeCustomerId) {
-             console.error("Missing customer ID in subscription deleted event.");
-             break;
-        }
+        if (!stripeCustomerId) { console.error("Missing customer ID"); break; }
 
         updates = {
-          subscription_status: 'canceled', // Or 'deleted'
-          active_plan_price_id: null,
-          subscription_current_period_end: null,
-          story_credits: 0, // Reset credits immediately on deletion, or adjust logic
+          subscription_status: 'canceled', // Ensure definitive canceled status
+          active_plan_price_id: null, // Clear active plan
+          subscription_current_period_end: null, // Clear end date
+          monthly_minutes_limit: null, // Reset minute limit (or to 0 if preferred)
         };
-        console.log("Subscription deleted. Updates prepared:", updates);
+        console.log("Subscription deleted/canceled. Minute limit reset. Updates prepared:", JSON.stringify(updates));
         break;
       }
 
-      // Add other cases as needed (e.g., invoice.payment_failed)
-
       default:
         console.log(`Unhandled event type: ${event.type}`);
-        // Return 200 for unhandled events to acknowledge receipt
-         return new Response(JSON.stringify({ received: true, message: 'Unhandled event type' }), { status: 200 });
+        return new Response(JSON.stringify({ received: true, message: `Unhandled event type: ${event.type}` }), { status: 200, headers: corsHeaders });
     }
 
     // --- Update Supabase Database ---
     if (Object.keys(updates).length > 0 && (supabaseUserId || stripeCustomerId)) {
-        let updateQuery = supabaseAdmin.from('users').update(updates);
+        // IMPORTANT: Change 'users' to your actual table name if different (e.g., 'profiles')
+        const targetTable = 'users';
+        let updateQuery = supabaseAdmin.from(targetTable).update(updates);
 
         if (supabaseUserId) {
-            console.log(`Updating user profile by Supabase User ID: ${supabaseUserId}`);
-            updateQuery = updateQuery.eq('id', supabaseUserId);
+            console.log(`Attempting to update '${targetTable}' for Supabase User ID: ${supabaseUserId}`);
+            updateQuery = updateQuery.eq('id', supabaseUserId); // Assumes 'id' column matches Auth user ID
         } else if (stripeCustomerId) {
-            // Fallback to Stripe Customer ID if Supabase ID wasn't available (e.g., from older events)
-            console.log(`Updating user profile by Stripe Customer ID: ${stripeCustomerId}`);
-            updateQuery = updateQuery.eq('stripe_customer_id', stripeCustomerId);
-        } else {
-             console.error("Webhook Error: Cannot update profile - No Supabase User ID or Stripe Customer ID available.");
-             // Acknowledge the event but log the failure to update
-             return new Response(JSON.stringify({ received: true, warning: 'Could not identify user to update.' }), { status: 200 });
+            console.log(`Attempting to update '${targetTable}' using Stripe Customer ID: ${stripeCustomerId}`);
+            updateQuery = updateQuery.eq('stripe_customer_id', stripeCustomerId); // Assumes 'stripe_customer_id' column exists
         }
 
-        const { data: updateData, error: updateError } = await updateQuery.select().single(); // Select to confirm update
+        const { data: updateData, error: updateError } = await updateQuery.select().maybeSingle();
 
         if (updateError) {
-            console.error("Webhook Error: Failed to update user profile:", updateError);
-            // Throwing error here might cause Stripe to retry.
-            // Decide if retry is desirable or if logging is sufficient.
-            throw new Error(`Database update failed: ${updateError.message}`);
+             if (updateError.code === 'PGRST116' && !supabaseUserId && stripeCustomerId) {
+                 console.warn(`Webhook Warning: Could not find user profile in '${targetTable}' matching Stripe Customer ID ${stripeCustomerId}.`);
+                  return new Response(JSON.stringify({ received: true, warning: 'User profile not found for Stripe Customer ID.' }), { status: 200, headers: corsHeaders });
+             } else {
+                console.error(`Webhook Error: Failed to update user profile in '${targetTable}':`, updateError);
+                throw new Error(`Database update failed: ${updateError.message} (Code: ${updateError.code})`);
+            }
         }
 
-        console.log("Webhook: User profile updated successfully for event:", event.type, updateData);
+        if (updateData) { console.log(`Webhook: User profile in '${targetTable}' updated successfully for event: ${event.type}`); }
+        else if (!updateError) { console.log(`Webhook: Update query ran but no matching user found in '${targetTable}' for event: ${event.type}. Identifier: ${supabaseUserId ?? stripeCustomerId}`); }
 
     } else if (Object.keys(updates).length > 0) {
-         console.warn("Webhook Warning: Updates were prepared, but no user identifier (Supabase ID or Stripe Customer ID) was found for event:", event.type);
+         console.warn(`Webhook Warning: Updates prepared, but no user identifier found for event: ${event.type}. Updates:`, JSON.stringify(updates));
     } else {
-        console.log("Webhook: No database updates required for this event:", event.type);
+        console.log(`Webhook: No database updates required for handled event: ${event.type}`);
     }
 
-    // Return 200 to acknowledge successful handling
-    return new Response(JSON.stringify({ received: true }), { status: 200 });
+    return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
 
-  } catch (error) {
-    console.error('Webhook Error processing event:', event.type, error);
-    // Return 500 to signal an internal error; Stripe might retry
-    return new Response(JSON.stringify({ error: `Webhook handler failed: ${error.message}` }), { status: 500 });
+  } catch (error: any) {
+    console.error(`Webhook Error processing event ${event.id} (Type: ${event.type}): ${error.message}`, error.stack);
+    return new Response(JSON.stringify({ error: `Webhook handler failed: ${error.message}` }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

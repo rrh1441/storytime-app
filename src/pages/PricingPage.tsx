@@ -32,8 +32,6 @@ const plans = [
     priceMonthly: 4.99,
     features: [
       '15 minutes of custom stories per Month',
-      'Save Stories to Library',
-      'Standard Voices',
     ],
     cta: 'Get Starter',
     popular: false,
@@ -46,8 +44,6 @@ const plans = [
     priceMonthly: 14.99,
     features: [
       '60 minutes of custom stories per Month',
-      'Access to All Voices',
-      'Save Stories to Library',
       'Priority Support',
     ],
     cta: 'Get Super',
@@ -62,8 +58,6 @@ const plans = [
     priceMonthly: 49.99,
     features: [
       '300 minutes of custom stories per Month',
-      'Access to All Voices',
-      'Save Stories to Library',
       'Highest Priority Support',
     ],
     cta: 'Get Studio',

@@ -10,14 +10,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation } from "@tanstack/react-query";
+// Import useAuth correctly
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
-import { Link } from "react-router-dom";
+// Import Link and useLocation
+import { Link, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/apiBase";
 
 /* ─────────── UI components ─────────── */
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // Keep Input for other fields
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -89,7 +91,6 @@ const SUPPORTED_LANGUAGES = [
 
 /* ─────────── Zod schema (Title Removed) ─────────── */
 const schema = z.object({
-  // REMOVED: storyTitle field
   theme: z.string().min(1, "Theme is required."),
   length: z.number().min(3).max(60),
   language: z.string().refine(
@@ -107,15 +108,27 @@ export type ActiveTab = "parameters" | "edit" | "voice" | "share";
 
 /* ─────────── Component ─────────── */
 const StoryCreator: React.FC = () => {
-  const { user } = useAuth();
-  const isSubscriber = Boolean(user?.user_metadata?.subscriber); // Adjust if profile holds subscription
+  // Destructure user, profile, and loading state correctly
+  const { user, profile, loading: authLoading } = useAuth();
+  const location = useLocation(); // Get location for potential redirects
+
+  // Correct check for subscriber status using profile
+  const isSubscriber = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing';
+
+  // Log values for debugging (can be removed later)
+  console.log(
+    "[StoryCreator] Rendering - Auth Loading:", authLoading,
+    "| User:", !!user,
+    "| Profile Status:", profile?.subscription_status,
+    "| Is Subscriber:", isSubscriber
+  );
 
   /* ── state ──────────────────────────────────────────────── */
   const [storyContent, setStoryContent] = useState("");
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
-  const [storyTitle, setStoryTitle] = useState<string | null>(null); // State to hold the *generated* title
+  const [storyTitle, setStoryTitle] = useState<string | null>(null);
 
   /* ── scroll-to-top on tab switch ────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -127,13 +140,12 @@ const StoryCreator: React.FC = () => {
     }
   }, [activeTab]);
 
-  /* ── audio handling (No changes needed here) ────────────── */
+  /* ── audio handling ────────────── */
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const handlePlayPause = () => {
-    // ... (implementation remains the same) ...
     if (!generatedAudioUrl) return;
 
     if (!audioRef.current) {
@@ -165,7 +177,6 @@ const StoryCreator: React.FC = () => {
   };
 
   const handleCopyLink = () => {
-    // ... (implementation remains the same) ...
      if (!generatedAudioUrl) return;
      navigator.clipboard.writeText(generatedAudioUrl).then(() =>
        toast({
@@ -176,9 +187,8 @@ const StoryCreator: React.FC = () => {
   };
 
   const handleDownload = () => {
-    // ... (implementation uses storyTitle state now) ...
      if (!generatedAudioUrl) return;
-     const title = storyTitle || "storytime"; // Use the generated title state
+     const title = storyTitle || "storytime";
      const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
      const a = document.createElement("a");
      a.href = generatedAudioUrl;
@@ -190,16 +200,14 @@ const StoryCreator: React.FC = () => {
   };
 
   const handleOpen = () => {
-     // ... (implementation remains the same) ...
      if (!generatedAudioUrl) return;
      window.open(generatedAudioUrl, "_blank", "noopener,noreferrer");
   };
 
-  /* ── Voice Preview Handling (No changes needed here) ────────── */
+  /* ── Voice Preview Handling ────────── */
   const handleVoicePreview = (voiceId: string) => {
-    // ... (implementation remains the same) ...
      setSelectedVoiceId(voiceId);
-     setGeneratedAudioUrl(null); // Stop main audio if previewing
+     setGeneratedAudioUrl(null);
 
      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
      if (!supabaseUrl) {
@@ -244,11 +252,10 @@ const StoryCreator: React.FC = () => {
      });
   };
 
-  /* ── form (Updated Defaults) ──────────────────────────────── */
+  /* ── form ──────────────────────────────── */
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      // REMOVED: storyTitle
       theme: "",
       length: 3,
       language: "English",
@@ -256,29 +263,26 @@ const StoryCreator: React.FC = () => {
       educationalFocus: null,
       additionalInstructions: null,
     },
-    mode: "onBlur", // Keep mode as is
+    mode: "onBlur",
   });
 
   /* ── mutations ──────────────────────────────────────────── */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
-      // The data object here now matches the updated FormValues type (no storyTitle)
       const r = await fetch(`${API_BASE}/generate-story`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // The backend (`story.ts`) will ignore any stray storyTitle if present,
-        // but `data` based on the zod schema won't have it anyway.
         body: JSON.stringify(data),
       });
       if (!r.ok) {
           const errorText = await r.text();
           throw new Error(errorText || `Story generation failed with status ${r.status}`);
       }
-      return (await r.json()) as { story: string; title: string }; // Expect title back
+      return (await r.json()) as { story: string; title: string };
     },
-    onSuccess: ({ story, title }) => { // Destructure the returned title
+    onSuccess: ({ story, title }) => {
       setStoryContent(story);
-      setStoryTitle(title); // Store the generated title in state
+      setStoryTitle(title);
       setActiveTab("edit");
     },
     onError: (e: Error) =>
@@ -288,8 +292,6 @@ const StoryCreator: React.FC = () => {
         variant: "destructive",
       }),
   });
-
-  // generateAudio mutation remains the same
 
   const generateAudio = useMutation({
      mutationFn: async ({ text, voiceId }: { text: string; voiceId: string; }) => {
@@ -324,7 +326,6 @@ const StoryCreator: React.FC = () => {
 
   /* ── helpers ───────────────────────────────────────────── */
   const handleThemeKey = (e: KeyboardEvent<HTMLInputElement>): void => {
-    // ... (implementation remains the same) ...
      if (e.key !== "Enter") return;
      const match = THEME_SUGGESTIONS.find((t) =>
        t.toLowerCase().startsWith(e.currentTarget.value.toLowerCase()),
@@ -337,6 +338,17 @@ const StoryCreator: React.FC = () => {
   ).length;
   const watchLanguage = form.watch("language");
 
+  // --- Render Logic ---
+  // Show loading state while auth/profile is loading
+  if (authLoading) {
+      return (
+          <div className="min-h-screen bg-storytime-background py-12 flex items-center justify-center">
+              <Loader2 className="h-12 w-12 animate-spin text-storytime-purple" />
+              <p className="ml-4 text-muted-foreground">Loading user data...</p>
+          </div>
+      );
+  }
+
   /* ── UI ─────────────────────────────────────────────────── */
   return (
     <div
@@ -347,13 +359,11 @@ const StoryCreator: React.FC = () => {
         <h1 className="mb-4 text-3xl font-display font-bold text-gray-700">
           Story Creator Studio
         </h1>
-        {/* Add display for the generated title */}
         {storyTitle && activeTab !== 'parameters' && (
             <h2 className="text-2xl font-semibold text-storytime-purple mb-6">
                 Story: <span className="italic">{storyTitle}</span>
             </h2>
         )}
-
 
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()}>
@@ -363,36 +373,22 @@ const StoryCreator: React.FC = () => {
               className="space-y-6"
             >
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="parameters">
-                  <PenTool className="mr-1 h-4 w-4" />
-                  Story Outline
-                </TabsTrigger>
-                <TabsTrigger value="edit" disabled={!storyContent}>
-                  <Edit className="mr-1 h-4 w-4" />
-                  Edit / Preview
-                </TabsTrigger>
-                <TabsTrigger value="voice" disabled={!storyContent}>
-                  <Headphones className="mr-1 h-4 w-4" />
-                  Voice & Audio
-                </TabsTrigger>
-                <TabsTrigger value="share" disabled={!generatedAudioUrl}>
-                  <Share2 className="mr-1 h-4 w-4" />
-                  Share Story
-                </TabsTrigger>
+                 <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4" /> Story Outline</TabsTrigger>
+                 <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4" /> Edit / Preview</TabsTrigger>
+                 <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4" /> Voice & Audio</TabsTrigger>
+                 <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4" /> Share Story</TabsTrigger>
               </TabsList>
 
               {/* ───────────────────────────── parameters */}
               <TabsContent value="parameters">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Story Outline</CardTitle>
-                    <CardDescription>
-                      Describe the story you want the AI to create. The title will be generated automatically.
-                    </CardDescription>
-                  </CardHeader>
+                   <CardHeader>
+                     <CardTitle>Story Outline</CardTitle>
+                     <CardDescription>
+                       Describe the story you want the AI to create. The title will be generated automatically.
+                     </CardDescription>
+                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {/* REMOVED Story Title FormField */}
-
                     {/* THEME */}
                     <FormField
                        control={form.control}
@@ -445,7 +441,8 @@ const StoryCreator: React.FC = () => {
                             onValueChange={(v) => field.onChange(Number(v))}
                           >
                             {LENGTH_OPTIONS.map((len) => {
-                              const disabled = !isSubscriber && len !== 3; // Keep free tier logic
+                              // Corrected isSubscriber check applied here
+                              const disabled = !isSubscriber && len !== 3;
                               return (
                                 <div key={len} className="flex items-center">
                                   <RadioGroupItem
@@ -467,12 +464,13 @@ const StoryCreator: React.FC = () => {
                               );
                             })}
                           </RadioGroup>
-                          {!user && ( // Show login prompt if not logged in
+                          {/* Conditional prompts */}
+                          {!user && (
                                <p className="mt-1 text-xs text-muted-foreground">
-                                   <Link to="/login" state={{ from: location }} className="text-primary underline">Log in</Link> or <Link to="/signup" state={{ from: location }} className="text-primary underline">sign up</Link> to create longer stories.
+                                   <Link to="/login" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">Log in</Link> or <Link to="/signup" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">sign up</Link> to create longer stories.
                                </p>
                           )}
-                          {user && !isSubscriber && ( // Show upgrade prompt if logged in but not subscriber
+                          {user && !isSubscriber && (
                               <p className="mt-1 text-xs text-muted-foreground">
                                   Want longer tales? <Link to="/pricing" className="text-primary underline">Upgrade your plan!</Link>
                               </p>
@@ -481,7 +479,6 @@ const StoryCreator: React.FC = () => {
                         </FormItem>
                       )}
                     />
-
 
                     {/* LANGUAGE */}
                      <FormField
@@ -520,7 +517,7 @@ const StoryCreator: React.FC = () => {
                                      <Input
                                          placeholder="e.g., Penelope, Hudson, Luna the Rabbit"
                                          {...field}
-                                          value={field.value ?? ''} // Handle null correctly
+                                          value={field.value ?? ''}
                                      />
                                  </FormControl>
                                  <FormMessage />
@@ -539,7 +536,7 @@ const StoryCreator: React.FC = () => {
                                      <Input
                                          placeholder="e.g., Counting to 10, The Water Cycle, Being Kind"
                                          {...field}
-                                         value={field.value ?? ''} // Handle null correctly
+                                         value={field.value ?? ''}
                                      />
                                  </FormControl>
                                  <FormMessage />
@@ -558,7 +555,7 @@ const StoryCreator: React.FC = () => {
                                       <Textarea
                                           rows={4}
                                           {...field}
-                                          value={field.value ?? ''} // Handle null correctly
+                                          value={field.value ?? ''}
                                           placeholder="e.g., Make the ending happy, include a talking squirrel, avoid scary themes"
                                           />
                                   </FormControl>
@@ -572,12 +569,11 @@ const StoryCreator: React.FC = () => {
                   </CardContent>
                   <CardFooter>
                     <Button
-                      type="button" // Important: keep as type="button"
+                      type="button"
                       className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
                       disabled={
                         generateStory.isPending || !form.formState.isValid
                       }
-                      // Pass validated data directly
                       onClick={form.handleSubmit((data) => generateStory.mutate(data))}
                     >
                       {generateStory.isPending ? (
@@ -598,7 +594,6 @@ const StoryCreator: React.FC = () => {
 
               {/* ───────────────────────────── edit / preview */}
               <TabsContent value="edit">
-                  {/* ... (Edit/Preview CardContent and CardFooter remain the same) ... */}
                    <Card>
                        <CardHeader>
                            <CardTitle>Edit & Preview Story</CardTitle>
@@ -644,7 +639,6 @@ const StoryCreator: React.FC = () => {
 
               {/* ───────────────────────────── voice / audio */}
                <TabsContent value="voice">
-                  {/* ... (Voice/Audio CardContent and CardFooter remain the same) ... */}
                     <Card>
                        <CardHeader>
                            <CardTitle>Add Narration</CardTitle>
@@ -664,8 +658,8 @@ const StoryCreator: React.FC = () => {
                                            onClick={() => handleVoicePreview(v.id)}
                                             className={`flex min-w-[100px] items-center justify-start gap-1.5 rounded-md px-3 py-2 text-left transition-all sm:min-w-[120px] ${
                                                 selectedVoiceId === v.id
-                                                    ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90 ring-2 ring-offset-2 ring-storytime-blue' // Added ring for selected
-                                                    : 'text-gray-700 hover:bg-gray-100' // Adjusted non-selected style
+                                                    ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90 ring-2 ring-offset-2 ring-storytime-blue'
+                                                    : 'text-gray-700 hover:bg-gray-100'
                                             }`}
                                        >
                                            {selectedVoiceId === v.id ? (
@@ -728,7 +722,6 @@ const StoryCreator: React.FC = () => {
 
               {/* ───────────────────────────── share */}
               <TabsContent value="share">
-                 {/* ... (Share CardContent and CardFooter remain the same) ... */}
                  <Card>
                      <CardHeader>
                          <CardTitle>Share Your Story: <span className="italic">{storyTitle || 'Generated Story'}</span></CardTitle>

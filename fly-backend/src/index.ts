@@ -1,29 +1,21 @@
+// fly-backend/src/index.ts  •  2025‑04‑28  (clean)
 // -----------------------------------------------------------------------------
-// fly-backend/src/index.ts
-// Express API entrypoint  •  2025‑04‑22
-// -----------------------------------------------------------------------------
-// * Handles story generation, TTS generation + Supabase upload
-// * Provides /api/preview-voice/:label for voice samples
-// * Works with `moduleResolution: node16 | nodenext` (explicit .js extensions)
+// REST API entry‑point for StoryTime backend.
+// * /generate-story  – LLM story generation
+// * /tts             – OpenAI TTS → MP3 → Supabase Storage (service‑role)
 // -----------------------------------------------------------------------------
 
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { v4 as uuidv4 } from "uuid";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { voicePreview } from "./routes/voicePreview.js";          // 👈  .js ext
-import { generateStory } from "./services/story.js";              // 👈  .js ext
-import {
-  generateSpeech,
-  VOICES,
-  VoiceId,
-  SpeechGenerationResult,
-} from "./services/tts.js";                                       // 👈  .js ext
+import { generateStory } from "./services/story.js";
+import { generateSpeech, VOICES, type VoiceId } from "./services/tts.js";
+import { uploadAudio } from "./services/storage.js";  // service‑role helper
 
 /*───────────────────────────────────────────────────────────────────────────
-  Environment
+  Environment validation
 ───────────────────────────────────────────────────────────────────────────*/
 const {
   PORT = "8080",
@@ -37,39 +29,37 @@ if (!SUPABASE_ANON_KEY) throw new Error("SUPABASE_ANON_KEY env var is required."
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY env var is required.");
 
 /*───────────────────────────────────────────────────────────────────────────
-  Supabase
+  Supabase anon client – only for public data & Auth endpoints
 ───────────────────────────────────────────────────────────────────────────*/
-const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabasePublic: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+});
 
 /*───────────────────────────────────────────────────────────────────────────
   Express setup
 ───────────────────────────────────────────────────────────────────────────*/
-const app = express();                 // declare BEFORE any app.use
+const app = express();
 
-// CORS
-app.use(
-  cors({
-    origin: [
-      "https://storytime-app.fly.dev",
-      "https://yourstorytime.vercel.app",
-      "http://localhost:5173",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
-);
+app.use(cors({
+  origin: [
+    "https://storytime-app.fly.dev",
+    "https://yourstorytime.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
 
-// Std middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("dev"));
 
-// Routes
-app.use("/api/preview-voice", voicePreview); // voice sample endpoint
-
 /*───────────────────────────────────────────────────────────────────────────
-  Health
+  Health check
 ───────────────────────────────────────────────────────────────────────────*/
 app.get("/health", (_req, res) => res.status(200).send("OK"));
 
@@ -79,63 +69,46 @@ app.get("/health", (_req, res) => res.status(200).send("OK"));
 app.post("/generate-story", async (req, res) => {
   try {
     const { story, title } = await generateStory(req.body);
-    res.status(200).json({ story, title });
+    return res.status(200).json({ story, title });
   } catch (err: any) {
-    console.error("[/generate-story] ", err);
-    res.status(500).json({ error: err.message || "Failed to generate story" });
+    console.error("[/generate-story]", err);
+    return res.status(500).json({ error: err.message || "Failed to generate story." });
   }
 });
 
 /*───────────────────────────────────────────────────────────────────────────
-  Text‑to‑Speech + upload to Supabase
+  TTS → MP3 upload (service‑role path)
 ───────────────────────────────────────────────────────────────────────────*/
 app.post("/tts", async (req, res) => {
   try {
-    const { text, voice, language = "English" } = req.body;
+    const { text, voice, language = "English" } = req.body as {
+      text: string;
+      voice: string;
+      language?: string;
+    };
 
-    // Basic validation
-    if (typeof text !== "string" || !text.trim() || typeof voice !== "string") {
-      return res.status(400).json({ error: "text and voice are required" });
+    if (!text?.trim() || !voice) {
+      return res.status(400).json({ error: "'text' and 'voice' fields are required." });
     }
     if (!VOICES.includes(voice as VoiceId)) {
-      return res.status(400).json({ error: `Invalid voice specified: ${voice}` });
+      return res.status(400).json({ error: `Unsupported voice: ${voice}` });
     }
 
-    // 1. Generate speech
-    const { mp3Buffer, contentType }: SpeechGenerationResult = await generateSpeech(
-      text,
-      voice as VoiceId,
-      language,
-    );
+    // 1. Generate speech (WAV → MP3) via OpenAI
+    const { mp3Buffer, contentType, publicUrl } = await generateSpeech(text, voice as VoiceId, language);
 
-    // 2. Upload to Supabase Storage
-    const bucket = "story_assets";
-    const fileName = `${uuidv4()}.mp3`;
-    const filePath = `audio/${fileName}`;
+    // 2. Store in Supabase Storage via service‑role client
+    const audioUrl = await uploadAudio(`${Date.now()}.mp3`, mp3Buffer, contentType);
 
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, mp3Buffer, {
-        contentType,
-        upsert: false,
-      });
-    if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
-      throw new Error("Failed to store generated audio.");
-    }
-
-    // 3. Public URL
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
-    if (!urlData?.publicUrl) throw new Error("Failed to get audio URL.");
-    res.status(200).json({ audioUrl: urlData.publicUrl });
+    return res.status(200).json({ audioUrl });
   } catch (err: any) {
-    console.error("[/tts] ", err);
-    res.status(500).json({ error: err.message || "Failed to generate audio." });
+    console.error("[/tts]", err);
+    return res.status(500).json({ error: err.message || "Failed to generate audio." });
   }
 });
 
 /*───────────────────────────────────────────────────────────────────────────
-  Start server
+  Listen
 ───────────────────────────────────────────────────────────────────────────*/
 app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`✅  Backend listening on :${PORT}`);

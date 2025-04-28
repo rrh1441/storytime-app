@@ -1,16 +1,19 @@
 // services/storage.ts
 // --------------------------------------------------------------------------
-// Shared helper for uploading files to Supabase Storage using *service-role*
-// credentials. Bucket name is configurable via env; defaults to `story_assets`.
+// Upload helper that always bypasses RLS by using the service‑role key.
+// Bucket name is configurable via env (STORY_AUDIO_BUCKET) and defaults to
+// `story_assets`.
 // --------------------------------------------------------------------------
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 
-// ---------------------------------------------------------------------------
-// Environment validation – fail fast if mis‑configured.
-// ---------------------------------------------------------------------------
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STORY_AUDIO_BUCKET } =
-  process.env;
+// ── Env validation ──────────────────────────────────────────────────────────
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  STORY_AUDIO_BUCKET,
+} = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
@@ -18,10 +21,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Service‑role client (never persists or auto‑injects user sessions)
-// ---------------------------------------------------------------------------
-const supabaseService: SupabaseClient = createClient(
+// ── Service‑role client (never auto‑injects user JWT) ───────────────────────
+export const supabaseService: SupabaseClient = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   {
@@ -36,27 +37,30 @@ const supabaseService: SupabaseClient = createClient(
   }
 );
 
-// ---------------------------------------------------------------------------
-// Bucket config – set STORY_AUDIO_BUCKET in env for non‑default name
-// ---------------------------------------------------------------------------
+// ── Bucket config ───────────────────────────────────────────────────────────
 const BUCKET = (STORY_AUDIO_BUCKET || "story_assets") as const;
 
+/** Ensure bucket exists (idempotent). */
+await supabaseService.storage
+  .createBucket(BUCKET, { public: true })
+  .catch(() => {}); // ignore "already exists"
+
 /**
- * Uploads a Buffer to the configured Storage bucket and returns a public URL.
- * The upload path is automatically namespaced with a timestamp for uniqueness.
+ * Upload a Buffer to Supabase Storage and return its public URL.
  */
 export async function uploadAudio(
   filename: string,
   file: Buffer,
   contentType: string = "audio/mpeg"
 ): Promise<string> {
-  const objectPath = `${Date.now()}_${filename}`;
+  const objectPath = `${Date.now()}_${randomUUID()}_${filename}`;
 
   const { error } = await supabaseService.storage
     .from(BUCKET)
     .upload(objectPath, file, { contentType, upsert: true });
 
   if (error) {
+    console.error("Storage upload raw error →", error); // ← detailed log
     throw new Error(`Supabase upload error: ${error.message}`);
   }
 
@@ -69,5 +73,3 @@ export async function uploadAudio(
   }
   return publicUrl;
 }
-
-export { supabaseService };

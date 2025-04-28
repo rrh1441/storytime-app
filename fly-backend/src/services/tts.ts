@@ -1,96 +1,82 @@
-// services/tts.ts  •  2025‑04‑28 – refactored to store audio via service‑role
+// services/tts.ts  •  2025‑04‑28  (stable)
+// -----------------------------------------------------------------------------
+// Generates speech with OpenAI TTS, converts it to MP3, uploads via the
+// service‑role client, and returns the MP3 buffer + public URL.
 // -----------------------------------------------------------------------------
 
+import { randomUUID } from "crypto";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
+import fs from "fs/promises";
 import path from "path";
 import { tmpdir } from "os";
-import fs from "fs/promises";
-import { randomUUID } from "crypto";
-import nodeFetch from "node-fetch";
-import { uploadAudio } from "./storage.js"; // adjust relative path if needed
+import fetch, { Headers } from "node-fetch";
+import { uploadAudio } from "./storage.js";
 
-// ── fetch poly‑fill (Node <18) ───────────────────────────────────────────────
-const fetchFn: typeof globalThis.fetch =
-  typeof globalThis.fetch === "function"
-    ? globalThis.fetch
-    : (nodeFetch as unknown as typeof globalThis.fetch);
-
-// ── FFmpeg binary path ───────────────────────────────────────────────────────
-const ffmpegPath = (ffmpegStatic as unknown as string) ?? "";
+// ── ensure FFmpeg binary is available ───────────────────────────────────────
+const ffmpegPath = (ffmpegStatic as unknown as string) || "";
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 
-// ── Voice definitions ────────────────────────────────────────────────────────
-export const VOICES = [
-  "alloy",
-  "echo",
-  "fable",
-  "nova",
-  "onyx",
-  "shimmer",
-] as const;
+// ── Voice catalogue ─────────────────────────────────────────────────────────
+export const VOICES = ["alloy", "echo", "fable", "nova", "onyx", "shimmer"] as const;
 export type VoiceId = (typeof VOICES)[number];
 
-/** UI label → OpenAI voice ID */
+/** UI‑label → OpenAI voice ID */
 const LABEL_TO_ID: Record<string, VoiceId> = {
-  "Alex (US)": "alloy",
-  "Ethan (US)": "echo",
-  "Felix (UK)": "fable",
-  "Nora (US)": "nova",
-  "Oscar (US)": "onyx",
-  "Selina (US)": "shimmer",
+  "Alex (US)": "alloy",
+  "Ethan (US)": "echo",
+  "Felix (UK)": "fable",
+  "Nora (US)": "nova",
+  "Oscar (US)": "onyx",
+  "Selina (US)": "shimmer",
 };
 
-// ── Return type ──────────────────────────────────────────────────────────────
 export interface SpeechGenerationResult {
   mp3Buffer: Buffer;
-  contentType: "audio/mpeg";
   publicUrl: string;
+  contentType: "audio/mpeg";
 }
 
-// ── Main function ────────────────────────────────────────────────────────────
 /**
- * Generates speech via OpenAI TTS, converts it to MP3, stores it in Supabase
- * Storage (service‑role client), and returns both the MP3 buffer and public URL.
+ * Convert a text string to speech and store the MP3 publicly.
  */
 export async function generateSpeech(
   text: string,
   uiVoiceLabel: string,
-  language = "English"
+  language: string = "English"
 ): Promise<SpeechGenerationResult> {
+  // ── validate env and args ────────────────────────────────────────────────
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY env var not set");
+  }
   const voiceId = LABEL_TO_ID[uiVoiceLabel] ?? (uiVoiceLabel as VoiceId);
-
   if (!VOICES.includes(voiceId)) {
     throw new Error(`Unsupported voice: ${uiVoiceLabel}`);
   }
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY environment variable is not set.");
-  }
 
-  /* 1️⃣ OpenAI TTS → WAV */
-  const res = await fetchFn("https://api.openai.com/v1/audio/speech", {
+  // ── 1️⃣  Text → WAV via OpenAI TTS ─────────────────────────────────────────
+  const res = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
-    headers: {
+    headers: new Headers({
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({
       model: "tts-1",
       voice: voiceId,
       input: text,
-      response_format: "wav",
-      // Include language for future-proofing if API supports it
       language,
+      response_format: "wav",
     }),
   });
 
-  if (!res.ok || !res.body) {
-    const msg = res.body ? await res.text() : "";
-    throw new Error(`OpenAI TTS error ${res.status}: ${res.statusText}\n${msg}`);
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "<no‑body>");
+    throw new Error(`OpenAI TTS ${res.status}: ${res.statusText}\n${msg}`);
   }
   const wavBuf = Buffer.from(await res.arrayBuffer());
 
-  /* 2️⃣ WAV → MP3 */
+  // ── 2️⃣  WAV → MP3 via FFmpeg ──────────────────────────────────────────────
   const uid = randomUUID();
   const tmpDir = path.join(tmpdir(), "storytime_tts", uid);
   const wavPath = path.join(tmpDir, `${uid}.wav`);
@@ -105,7 +91,7 @@ export async function generateSpeech(
       .audioCodec("libmp3lame")
       .audioBitrate("128k")
       .format("mp3")
-      .on("end", () => resolve())
+      .on("end", resolve)
       .on("error", reject)
       .save(mp3Path);
   });
@@ -113,8 +99,8 @@ export async function generateSpeech(
   const mp3Buffer = await fs.readFile(mp3Path);
   await fs.rm(tmpDir, { recursive: true, force: true });
 
-  /* 3️⃣ Upload to Supabase Storage */
-  const publicUrl = await uploadAudio(`${uid}.mp3`, mp3Buffer, "audio/mpeg");
+  // ── 3️⃣  Upload via service‑role client ────────────────────────────────────
+  const publicUrl = await uploadAudio(`${uid}.mp3`, mp3Buffer);
 
-  return { mp3Buffer, contentType: "audio/mpeg", publicUrl };
+  return { mp3Buffer, publicUrl, contentType: "audio/mpeg" };
 }

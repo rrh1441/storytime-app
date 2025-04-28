@@ -2,36 +2,51 @@
  * services/usage.ts
  * --------------------------------------------------------------------------
  * Supabase helpers for enforcing the “one free story ever” rule.
+ * Uses a *dedicated* service-role client that can never inherit a user JWT.
  * --------------------------------------------------------------------------
  */
-import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /* -------------------------------------------------------------------------- */
-/*  Run‑time env‑var verification so the container fails fast if mis‑configured */
+/*  Run-time env-var verification ­– fail fast if the container is mis-configured */
 /* -------------------------------------------------------------------------- */
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
-    "Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables."
+    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
   );
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: false },
-  // Optional: tune fetch timeout etc. here
-});
+/* -------------------------------------------------------------------------- */
+/*  Service-only client                                                       */
+/*  ­– can *never* pick up a user session                                     */
+/* -------------------------------------------------------------------------- */
+export const supabaseService: SupabaseClient = createClient(
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    },
+  }
+);
 
 /* -------------------------------------------------------------------------- */
 /*  Public helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Returns true if this session‑id has **already** used its free story.
+ * Returns true if this session-id has **already** used its free story.
  */
 export async function checkStoryUsed(sessionId: string): Promise<boolean> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseService
     .from("story_usage")
     .select("used")
     .eq("session_id", sessionId)
@@ -52,12 +67,17 @@ export async function markStoryUsed(
   sessionId: string,
   ip: string | null
 ): Promise<void> {
-  const { error } = await supabase.from("story_usage").upsert({
-    session_id: sessionId,
-    ip,
-    used: true,
-    used_at: new Date().toISOString(),
-  });
+  const { error } = await supabaseService
+    .from("story_usage")
+    .upsert(
+      {
+        session_id: sessionId,
+        ip,
+        used: true,
+        used_at: new Date().toISOString(),
+      },
+      { onConflict: "session_id" } // ensures proper UPSERT semantics
+    );
 
   if (error) {
     throw new Error(`Supabase upsert error: ${error.message}`);

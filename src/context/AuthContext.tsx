@@ -2,6 +2,8 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+// Log after import to ensure client is available here
+console.log("[AuthContext] Imported Supabase client instance:", supabase ? 'Exists' : 'MISSING/FAILED IMPORT');
 import { Database } from '@/integrations/supabase/types';
 
 type UserProfile = Database['public']['Tables']['users']['Row'] | null;
@@ -19,125 +21,95 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Log when the component renders
+  console.log("[AuthContext] AuthProvider component RENDERED.");
+
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true); // Start true
 
-  // --- Added Debug Log Function ---
-  const logAuthState = (message: string) => {
-    console.log(`[AuthContext] ${message} | Loading: ${isAuthLoading}, Session: ${!!session}, User: ${!!user?.id}`);
-  }
-  // ---
-
+  // Define fetchProfile even though it's not used in the simplified useEffect,
+  // so the rest of the component doesn't break.
   const fetchProfile = useCallback(async (userId: string | undefined) => {
-    console.log("[AuthContext] fetchProfile called with userId:", userId); // Added log
+    console.log("[AuthContext] fetchProfile called with userId (but might be unused in simplified test):", userId);
     if (!userId) {
-      console.log("[AuthContext] fetchProfile: No user ID, setting profile to null.");
+      // console.log("[AuthContext] fetchProfile: No user ID, setting profile to null.");
       setProfile(null);
       return;
     }
     try {
       const { data: userProfile, error, status } = await supabase
         .from('users') // Ensure this table name is correct
-        .select('*') // Fetch all columns, including subscription details
+        .select('*')
         .eq('id', userId)
         .single();
 
-      if (error && status !== 406) { // 406 means no rows found, which is okay
+      if (error && status !== 406) {
         console.error('[AuthContext] fetchProfile: Error fetching profile:', error);
         setProfile(null);
       } else if (userProfile) {
-        console.log("[AuthContext] fetchProfile: Profile fetched:", userProfile);
+        // console.log("[AuthContext] fetchProfile: Profile fetched:", userProfile);
         setProfile(userProfile);
       } else {
-        console.log("[AuthContext] fetchProfile: No profile found for user.");
+        // console.log("[AuthContext] fetchProfile: No profile found for user.");
         setProfile(null);
       }
     } catch(err) {
       console.error("[AuthContext] fetchProfile: Exception fetching profile:", err);
       setProfile(null);
-      // Re-throw or handle as needed - might prevent loading state change if not caught in caller
-      // throw err; // Potentially problematic if it stops loading=false
     }
-    console.log("[AuthContext] fetchProfile finished."); // Added log
-  }, []); // No dependencies needed if it only uses supabase client
+    // console.log("[AuthContext] fetchProfile finished.");
+  }, []);
 
+  // --- Simplified useEffect for Debugging ---
   useEffect(() => {
-    console.log("[AuthContext] AuthProvider Mount: Setting up auth listener and initial check.");
-    setIsAuthLoading(true); // Start loading true on mount/setup
-
+    console.log("[AuthContext] Simplified useEffect - Mounting.");
+    // Ensure loading starts true conceptually
+    setIsAuthLoading(true);
     let isMounted = true;
 
-    // --- Initial Session Check ---
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
-      if (!isMounted) return;
-      console.log("[AuthContext] getSession .then() entered. Session:", !!initialSession); // <-- ADDED LOG
+    console.log("[AuthContext] Simplified useEffect - Calling getSession()...");
+    supabase.auth.getSession()
+      .then(({ data: { session: initialSession } }) => {
+        if (!isMounted) {
+            console.log("[AuthContext] Simplified useEffect - getSession resolved BUT component unmounted.");
+            return;
+        };
+        // Even if session is null, the call succeeded.
+        console.log("[AuthContext] Simplified useEffect - getSession RESOLVED. Session:", !!initialSession);
+        setSession(initialSession); // Still set session
+        setUser(initialSession?.user ?? null); // Still set user
 
-      setSession(initialSession);
-      const initialUser = initialSession?.user ?? null;
-      setUser(initialUser);
-
-      console.log("[AuthContext] Calling initial fetchProfile..."); // <-- ADDED LOG
-      try {
-          await fetchProfile(initialUser?.id); // Fetch profile
-          console.log("[AuthContext] Initial fetchProfile completed."); // <-- ADDED LOG
-      } catch (profileError) {
-          console.error("[AuthContext] Error during initial fetchProfile:", profileError); // <-- ADDED LOG
-          // Decide if you still want to set loading false even if profile fails
-          // For now, we'll proceed to set loading false anyway for debugging visibility
-      }
-
-      console.log("[AuthContext] *** About to call setIsAuthLoading(false) in .then() ***"); // <-- ADDED LOG
-      if (isMounted) { // Double check mount status before setting state
+        console.log("[AuthContext] Simplified useEffect - *** Calling setIsAuthLoading(false) in .then() ***");
         setIsAuthLoading(false);
-        console.log("[AuthContext] Initial auth check finished, isAuthLoading is now false."); // Existing log modified
-        logAuthState("State after initial check (success path)"); // Log current state
-      }
+        console.log("[AuthContext] Simplified useEffect - state updated, loading is now false.");
+      })
+      .catch((err) => {
+        if (!isMounted) {
+            console.log("[AuthContext] Simplified useEffect - getSession rejected BUT component unmounted.");
+            return;
+        };
+        console.error("[AuthContext] Simplified useEffect - getSession REJECTED:", err);
 
-    }).catch(err => {
-      if (!isMounted) return;
-      console.error("[AuthContext] getSession() FAILED with error:", err); // <-- Enhanced Log
-      console.log("[AuthContext] *** About to call setIsAuthLoading(false) in .catch() ***"); // <-- ADDED LOG
-      if (isMounted) { // Double check mount status
-        setIsAuthLoading(false);
-        console.log("[AuthContext] Initial auth check FAILED, isAuthLoading is now false.");
-        logAuthState("State after initial check (error path)"); // Log current state
-      }
-    });
+        console.log("[AuthContext] Simplified useEffect - *** Calling setIsAuthLoading(false) in .catch() ***");
+        setIsAuthLoading(false); // Also set loading false on error
+         console.log("[AuthContext] Simplified useEffect - error path finished, loading is now false.");
+      });
 
-    // --- Auth State Change Listener ---
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (!isMounted) return;
-        console.log(`[AuthContext] Auth state changed: ${event}`, "New session exists:", !!newSession);
+    // Listener is commented out for this test
+    // const { data: authListener } = supabase.auth.onAuthStateChange(...);
 
-        const currentUser = newSession?.user ?? null;
-        const previousUserId = user?.id; // Get user state *before* setting it
-
-        setSession(newSession);
-        setUser(currentUser);
-
-        if (currentUser?.id !== previousUserId) {
-           console.log("[AuthContext] User changed, fetching profile...");
-           await fetchProfile(currentUser?.id);
-           logAuthState(`State after ${event}`); // Log state after change
-        } else {
-            console.log("[AuthContext] Auth state changed but user ID is the same, profile fetch skipped.");
-        }
-      }
-    );
-
-    // Cleanup listener on component unmount
     return () => {
-      console.log("[AuthContext] AuthProvider Unmount: Cleaning up listener.");
+      console.log("[AuthContext] Simplified useEffect - Unmounting.");
       isMounted = false;
-      authListener?.subscription.unsubscribe();
+      // authListener?.subscription.unsubscribe(); // Keep commented out
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchProfile]); // fetchProfile is memoized
+  }, []); // Use empty dependency array for this simplified test
+  // --- End Simplified useEffect ---
 
-  // --- Auth Actions ---
+
+  // --- Auth Actions (Keep them defined) ---
   const login = async (credentials: { email: string; password?: string; provider?: 'google' | 'github' }) => {
     console.log("[AuthContext] Attempting login...");
     let error = null;
@@ -177,16 +149,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.error("[AuthContext] Logout error:", error);
         throw error;
       }
-      // Manually clear profile on logout
-      setProfile(null);
+      setProfile(null); // Manually clear profile
       console.log("[AuthContext] Logout successful (listener will update state).");
     };
 
+  // Provide state and actions
   const value = {
     session,
     user,
     profile,
-    loading: isAuthLoading, // Provide the correct state here
+    loading: isAuthLoading,
     login,
     signup,
     logout,

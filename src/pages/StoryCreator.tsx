@@ -130,6 +130,7 @@ const StoryCreator: React.FC = () => {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<ActiveTab>("parameters");
   const [storyTitle, setStoryTitle] = useState<string | null>(null);
+  const [storyId, setStoryId] = useState<string | null>(null); // NEW
 
   /* ── scroll-to-top on tab switch ────────────────────────── */
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -306,12 +307,13 @@ const StoryCreator: React.FC = () => {
         throw new Error(errorMessage);
       }
 
-      return (await response.json()) as { story: string; title: string };
+      return (await response.json()) as { story: string; title: string; storyId: string };
     },
      // *** MODIFICATION ENDS HERE ***
-    onSuccess: ({ story, title }) => {
+    onSuccess: ({ story, title, storyId }) => {
       setStoryContent(story);
       setStoryTitle(title);
+      setStoryId(storyId);
       setActiveTab("edit");
       toast({ title: "Story Generated!", description: "Review and edit your new tale." });
     },
@@ -324,13 +326,15 @@ const StoryCreator: React.FC = () => {
   });
 
   const generateAudio = useMutation({
-     mutationFn: async ({ text, voiceId }: { text: string; voiceId: string; }) => {
+     mutationFn: async ({ text, voiceId, storyId }: { text: string; voiceId: string; storyId: string | null; }) => {
+         if (!storyId) {
+             throw new Error("Story ID is missing. Please generate a story first.");
+         }
          const language = form.getValues("language");
-         // NOTE: If /tts endpoint also requires auth, add header here too using the same pattern
          const r = await fetch(`${API_BASE}/tts`, {
              method: "POST",
              headers: { "Content-Type": "application/json" },
-             body: JSON.stringify({ text, voice: voiceId, language }),
+             body: JSON.stringify({ text, voice: voiceId, language, storyId }),
          });
          if (!r.ok) {
              const errorText = await r.text();
@@ -714,6 +718,7 @@ const StoryCreator: React.FC = () => {
                                        generateAudio.mutate({
                                            text: storyContent,
                                            voiceId: selectedVoiceId,
+                                           storyId,
                                        });
                                    }
                                }}

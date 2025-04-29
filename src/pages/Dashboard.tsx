@@ -1,6 +1,4 @@
-// src/pages/Dashboard.tsx • Delay-safe version with audio support shell
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -9,33 +7,37 @@ import { Button } from '@/components/ui/button';
 
 const Dashboard: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
-  const userId = user?.id;
+  const [ready, setReady] = useState(false);
 
-  const minutesUsed = profile?.minutes_used_this_period ?? 0;
-  const minutesLimit = profile?.monthly_minutes_limit ?? 0;
+  useEffect(() => {
+    if (!authLoading && user?.id) {
+      setReady(true);
+    }
+  }, [authLoading, user?.id]);
 
-  const {
-    data: stories,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: ['stories', userId],
+  const { data: stories, isLoading, refetch } = useQuery({
+    queryKey: ['stories', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('stories')
         .select('id, title, created_at, audio_url')
-        .eq('user_id', userId)
+        .eq('user_id', user!.id)
         .order('created_at', { ascending: false });
+
       if (error) throw error;
       return data;
     },
-    enabled: !!userId && !authLoading,
+    enabled: ready,
+    staleTime: 5 * 60 * 1000,
   });
+
+  const minutesUsed = profile?.minutes_used_this_period ?? 0;
+  const minutesLimit = profile?.monthly_minutes_limit ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="container mx-auto px-6">
-        {authLoading ? (
+        {authLoading || !ready ? (
           <div className="space-y-2">
             <Skeleton className="h-6 w-1/2" />
             <Skeleton className="h-4 w-3/4" />

@@ -4,17 +4,16 @@ import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { BookOpen, Menu, X, Tag } from "lucide-react";
 import { useAuth } from '@/context/AuthContext';
-import { Skeleton } from '@/components/ui/skeleton';
+// Removed Skeleton import as it's no longer used here
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { user, logout, loading } = useAuth(); // Get 'loading' which is now 'isAuthLoading'
+  const { user, logout, loading } = useAuth(); // Get 'loading'
 
-  // *** ADDED LOGGING ***
+  // Logging remains for debugging if needed
   useEffect(() => {
     console.log("Navbar received Auth State - Loading:", loading, "User:", !!user);
   }, [loading, user]);
-  // *** END LOGGING ***
 
   useEffect(() => {
     const handleResize = () => {
@@ -23,16 +22,19 @@ const Navbar = () => {
       }
     };
     window.addEventListener('resize', handleResize);
+    // Close menu on initial mount in case resize happens before interaction
     setIsMenuOpen(false);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleLogout = async () => {
     try {
-      setIsMenuOpen(false);
+      setIsMenuOpen(false); // Close mobile menu on logout
       await logout();
+      // Navigation will happen automatically via AuthContext/ProtectedRoute
     } catch (error) {
       console.error("Logout failed:", error);
+      // Optionally show a toast notification for logout failure
     }
   };
 
@@ -63,14 +65,8 @@ const Navbar = () => {
             <Tag className="h-4 w-4" /> Pricing
           </Link>
 
-          {/* Conditional Rendering based on loading and user */}
-          {loading ? (
-            <div className="flex items-center space-x-3">
-              {/* These skeletons match the "two gray buttons" description */}
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-24 rounded-full" />
-            </div>
-          ) : user ? (
+          {/* --- MODIFIED CONDITIONAL RENDERING --- */}
+          {user && !loading ? ( // Show logged-in state only if user exists AND loading is finished
             // Logged In State
             <>
               <Link
@@ -87,8 +83,8 @@ const Navbar = () => {
                 Log Out
               </Button>
             </>
-          ) : (
-            // Logged Out State
+          ) : ( // Show logged-out state if no user OR if still loading
+            // Logged Out State (or Loading State)
             <div className="flex items-center space-x-3">
               <Link to="/login">
                 <Button
@@ -107,6 +103,8 @@ const Navbar = () => {
               </Link>
             </div>
           )}
+          {/* --- END MODIFICATION --- */}
+
         </div>
 
         {/* Mobile Menu Button */}
@@ -139,13 +137,8 @@ const Navbar = () => {
                <Tag className="h-5 w-5" /> Pricing
             </Link>
 
-            {/* Mobile Conditional Rendering */}
-            {loading ? (
-              <div className="pt-4 space-y-4">
-                <Skeleton className="h-10 w-full rounded-full" />
-                <Skeleton className="h-10 w-full rounded-full" />
-              </div>
-            ) : user ? (
+            {/* --- MODIFIED MOBILE CONDITIONAL RENDERING --- */}
+            {user && !loading ? ( // Show logged-in state only if user exists AND loading is finished
               <>
                 <Link
                   to="/dashboard"
@@ -157,12 +150,12 @@ const Navbar = () => {
                 <Button
                   variant="outline"
                   className="w-full font-medium border-[#FF9F51] text-[#FF9F51] hover:bg-[#FF9F51]/10 rounded-full"
-                  onClick={handleLogout}
+                  onClick={handleLogout} // Logout function closes menu internally now
                 >
                   Log Out
                 </Button>
               </>
-            ) : (
+            ) : ( // Show logged-out state if no user OR if still loading
               <div className="pt-4 space-y-4">
                 <Link to="/login" onClick={closeMobileMenu}>
                   <Button className="w-full font-medium rounded-full" variant="outline">
@@ -176,6 +169,7 @@ const Navbar = () => {
                 </Link>
               </div>
             )}
+             {/* --- END MODIFICATION --- */}
           </div>
         </div>
       )}

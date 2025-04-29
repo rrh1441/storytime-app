@@ -29,6 +29,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [profile, setProfile] = useState<UserProfile>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true); // Start true
 
+  // Define fetchProfile using useCallback to ensure stable reference
   const fetchProfile = useCallback(async (userId: string | undefined) => {
     console.log("[AuthContext] fetchProfile called with userId:", userId);
     if (!userId) {
@@ -40,11 +41,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Ensure 'users' table name is correct for your project
       const { data: userProfile, error, status } = await supabase
         .from('users')
-        .select('*') // Select all columns needed, including subscription status etc.
+        .select('*') // Select all columns needed
         .eq('id', userId)
         .single();
 
-      if (error && status !== 406) { // 406 (Not Found) is acceptable if profile doesn't exist yet
+      if (error && status !== 406) { // 406 (Not Found) is acceptable
         console.error('[AuthContext] fetchProfile: Error fetching profile:', error);
         setProfile(null);
       } else if (userProfile) {
@@ -59,9 +60,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setProfile(null);
     }
     console.log("[AuthContext] fetchProfile finished.");
-  }, []); // useCallback depends only on supabase instance which is stable
+  }, []); // Empty dependency array as fetchProfile only relies on stable supabase client
 
-  // --- Full useEffect with Listener and Logging ---
+  // --- Full useEffect with Corrected Dependency Array ---
   useEffect(() => {
     console.log("[AuthContext] FULL useEffect - Mounting.");
     setIsAuthLoading(true);
@@ -76,19 +77,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
         }
         console.log("[AuthContext] FULL useEffect - Initial getSession RESOLVED. Session:", !!initialSession);
-        setSession(initialSession);
         const initialUser = initialSession?.user ?? null;
+        // Set state *before* potential async profile fetch
+        setSession(initialSession);
         setUser(initialUser);
-        // Fetch profile only if there's an initial user
+
         if (initialUser) {
             console.log("[AuthContext] FULL useEffect - Fetching initial profile for user:", initialUser.id);
-            await fetchProfile(initialUser.id);
+            await fetchProfile(initialUser.id); // Fetch profile if user exists
         } else {
             console.log("[AuthContext] FULL useEffect - No initial session/user, setting profile null.");
             setProfile(null); // Ensure profile is null if no initial session
         }
+        // Set loading false after all initial setup is done
         console.log("[AuthContext] FULL useEffect - *** Calling setIsAuthLoading(false) after initial check ***");
-        setIsAuthLoading(false);
+        if (isMounted) setIsAuthLoading(false);
         console.log("[AuthContext] FULL useEffect - Initial check finished, loading is now false.");
       })
       .catch((err) => {
@@ -97,17 +100,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
         }
         console.error("[AuthContext] FULL useEffect - Initial getSession REJECTED:", err);
+        setSession(null); // Clear session state on error
+        setUser(null);    // Clear user state on error
         setProfile(null); // Clear profile on error too
         console.log("[AuthContext] FULL useEffect - *** Calling setIsAuthLoading(false) after initial error ***");
-        setIsAuthLoading(false);
-         console.log("[AuthContext] FULL useEffect - Initial check ERROR, loading is now false.");
+         if (isMounted) setIsAuthLoading(false);
+        console.log("[AuthContext] FULL useEffect - Initial check ERROR, loading is now false.");
       });
 
     // Attach the Listener
     console.log("[AuthContext] FULL useEffect - Attaching onAuthStateChange listener...");
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        // Log added here to see if the callback fires AT ALL
         console.log(`[AuthContext] ***** onAuthStateChange FIRED! Event: ${event}, Session: ${!!newSession} *****`);
 
         if (!isMounted) {
@@ -116,42 +120,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const currentUser = newSession?.user ?? null;
-        // Read previous user state *before* setting new state
-        // NOTE: Using a direct state read here might capture the stale value if updates are batched.
-        // It's generally safer to compare currentUser.id to the previous value if needed.
-        const previousUserId = user?.id; // Using the 'user' state variable closure
+        // It's generally safer to compare IDs than object references for change detection
+        const previousUserId = user?.id; // Read previous ID from state closure
 
         console.log(`[AuthContext] onAuthStateChange: Event: ${event}. Previous User ID: ${previousUserId}, New User ID: ${currentUser?.id}`);
         console.log("[AuthContext] onAuthStateChange: About to set session/user state...");
         setSession(newSession);
-        setUser(currentUser); // Update user state
+        setUser(currentUser); // Update user state first
         console.log(`[AuthContext] onAuthStateChange: Session/user state SET. Current user state ID is now: ${currentUser?.id}`);
 
         // Fetch profile on SIGNED_IN or if user ID genuinely changes
         if (event === 'SIGNED_IN' || (currentUser && currentUser.id !== previousUserId)) {
            console.log(`[AuthContext] ${event} event or user changed, fetching profile for user: ${currentUser?.id}...`);
-           await fetchProfile(currentUser?.id); // Fetch the profile for the new user
+           await fetchProfile(currentUser?.id); // Pass the CURRENT user's ID
            console.log(`[AuthContext] onAuthStateChange: Profile fetch potentially done after ${event}.`);
-        // Explicitly handle SIGNED_OUT and TOKEN_REFRESHED (if session exists but user didn't change)
-        } else if (event === 'SIGNED_OUT') {
-            console.log("[AuthContext] SIGNED_OUT event, clearing profile.");
-            setProfile(null); // Clear profile on logout
-        } else if (event === 'TOKEN_REFRESHED' && newSession) {
-            // Optional: Re-fetch profile on token refresh if needed, although user ID likely hasn't changed
-            // console.log("[AuthContext] TOKEN_REFRESHED event, re-fetching profile for user:", currentUser?.id);
-            // await fetchProfile(currentUser?.id);
-            console.log("[AuthContext] TOKEN_REFRESHED event, profile fetch skipped (can be enabled if needed).");
-        } else if (!currentUser && previousUserId) {
-            // Catch other cases resulting in no user (like USER_DELETED)
+        } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
             console.log(`[AuthContext] User logged out or deleted (${event}), clearing profile.`);
-            setProfile(null);
+            setProfile(null); // Clear profile
+        } else if (event === 'TOKEN_REFRESHED') {
+             console.log(`[AuthContext] TOKEN_REFRESHED event. Current user: ${currentUser?.id}.`);
+             // Optionally re-fetch profile here if needed, but often unnecessary if only token changed
+             // await fetchProfile(currentUser?.id);
+        } else if (event === 'INITIAL_SESSION' && currentUser && !profile) {
+             // Handle case where listener fires INITIAL_SESSION after getSession resolved but before profile was fetched
+             console.log("[AuthContext] INITIAL_SESSION event with user but no profile, fetching profile...");
+             await fetchProfile(currentUser.id);
         } else {
-            console.log(`[AuthContext] Auth state changed (${event}), session: ${!!newSession}, no relevant user change detected, profile fetch skipped.`);
+            console.log(`[AuthContext] Auth state changed (${event}), session: ${!!newSession}, no relevant user change or action needed for profile fetch.`);
         }
       }
     );
 
-    // Log listener attachment status
     console.log("[AuthContext] FULL useEffect - onAuthStateChange listener attached. Subscription:", authListener?.subscription ? 'Exists' : 'FAILED TO ATTACH');
 
     return () => {
@@ -159,8 +158,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isMounted = false;
       authListener?.subscription.unsubscribe();
     };
-  // Ensure dependency array correctly reflects state used *within* the effect for comparisons
-  }, [fetchProfile, user]); // Include 'user' because its previous value is used in the listener condition
+  // ---> CORRECTED Dependency Array <---
+  }, [fetchProfile]); // Only include fetchProfile (memoized)
+  // --- End Corrected Dependency Array ---
 
 
   // --- Auth Actions ---
@@ -168,31 +168,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     console.log("[AuthContext] Attempting login...");
     let error = null;
     if (credentials.provider) {
-        // signInWithOAuth doesn't return user/session directly, listener handles it
         ({ error } = await supabase.auth.signInWithOAuth({ provider: credentials.provider }));
     } else if (credentials.password) {
-        // signInWithPassword also relies on the listener for state updates
         ({ error } = await supabase.auth.signInWithPassword({ email: credentials.email, password: credentials.password }));
     } else {
         console.error("[AuthContext] Login attempt failed: Password or provider required.");
         throw new Error("Password or provider required for login.");
     }
-    // Only log/throw if there was an immediate error initiating the process
     if (error) {
         console.error("[AuthContext] Login initiation error:", error);
-        throw error;
+        throw error; // Re-throw the error so the calling component knows it failed
     }
-    console.log("[AuthContext] Login initiated successfully (listener will update state).");
+    console.log("[AuthContext] Login initiated successfully (listener should update state).");
   };
 
   const signup = async (credentials: { email: string; password?: string; options?: { data?: { name?: string; [key: string]: any }; emailRedirectTo?: string } }) => {
       console.log("[AuthContext] Attempting signup...");
       const userData = credentials.options?.data ?? {};
-      // Ensure password is provided for email signup
       if (!credentials.password) {
            console.error("[AuthContext] Signup attempt failed: Password is required for email signup.");
            throw new Error("Password is required for email signup.");
       }
+      // Use object destructuring for the response
       const { data, error } = await supabase.auth.signUp({
           email: credentials.email,
           password: credentials.password,
@@ -200,22 +197,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       if (error) {
           console.error("[AuthContext] Signup error:", error);
-          throw error;
+          throw error; // Re-throw
       }
-      // Handle cases where user might exist but confirmation is needed, or if user is returned directly
-       if (data.user && data.session) {
+      // Check response data structure based on Supabase docs v2+
+      if (data.user && data.session) {
           console.log("[AuthContext] Signup successful and session created immediately.");
-          // Manually update state here IF the listener doesn't fire fast enough (usually not needed)
-          // setSession(data.session);
-          // setUser(data.user);
-          // await fetchProfile(data.user.id);
+          // Listener should handle state updates, usually no manual update needed here
       } else if (data.user && !data.session) {
            console.log("[AuthContext] Signup successful, user created but requires confirmation (no session).");
-           // User needs to confirm email, listener won't fire SIGNED_IN yet
+           // UI should inform user to check email
       } else {
-           console.log("[AuthContext] Signup response did not contain user or session (may require confirmation).");
+           console.log("[AuthContext] Signup response did not contain user or session (may require confirmation or be an unexpected state).");
       }
-      console.log("[AuthContext] Signup process completed.");
+      console.log("[AuthContext] Signup process completed (check email if confirmation required).");
   };
 
   const logout = async () => {
@@ -223,7 +217,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.auth.signOut();
       if (error) {
           console.error("[AuthContext] Logout error:", error);
-          throw error;
+          throw error; // Re-throw
       }
       // Clear state manually immediately for faster UI update, listener will confirm
       setSession(null);
@@ -237,7 +231,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     session,
     user,
     profile,
-    loading: isAuthLoading,
+    loading: isAuthLoading, // Use the correct loading state variable
     login,
     signup,
     logout,

@@ -833,3 +833,5 @@ const StoryCreator: React.FC = () => {
     </div>
   );
 };
+
+export default StoryCreator;

@@ -1,9 +1,8 @@
 // src/pages/Dashboard.tsx
-
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Plus, BookOpen, Settings, Loader2, AlertCircle, CreditCard, Sparkles } from 'lucide-react';
+import { Plus, BookOpen, Settings, AlertCircle, CreditCard, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +10,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tables } from '@/integrations/supabase/types';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+console.log("[MARKER] Dashboard.tsx mounted");
+
+// Types
 type StoryRow = Tables<'stories'>;
 
 const SubscriptionCTA: React.FC<{ profile: ReturnType<typeof useAuth>['profile'] }> = ({ profile }) => {
@@ -38,6 +40,8 @@ const Dashboard: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
+  console.log("[Dashboard] useAuth result:", { user, profile, authLoading });
+
   const {
     data: userStories,
     isLoading: isLoadingStories,
@@ -49,6 +53,7 @@ const Dashboard: React.FC = () => {
     queryKey: ['userStories', user?.id],
     queryFn: async () => {
       if (!user?.id) throw new Error("User ID not available during query");
+      console.log("[Dashboard] Fetching stories for user ID:", user.id);
       const { data, error } = await supabase
         .from('stories')
         .select('*')
@@ -79,7 +84,6 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-storytime-background py-12">
       <div className="container mx-auto px-6">
-        {/* Welcome Header */}
         <div className="mb-8">
           {isLoading ? (
             <>
@@ -98,7 +102,6 @@ const Dashboard: React.FC = () => {
 
         {!authLoading && <SubscriptionCTA profile={profile} />}
 
-        {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
           <Link to="/create-story" className="block group">
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center space-x-4 group-hover:shadow-lg transition-shadow cursor-pointer h-full border border-transparent group-hover:border-storytime-blue">
@@ -122,13 +125,11 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* My Stories Section */}
         <div className="mb-10">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">My Stories</h2>
           </div>
 
-          {/* States: Loading / Error / Empty / Success */}
           {isLoadingStories && (
             <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
               <Skeleton className="h-10 w-full" />
@@ -189,7 +190,6 @@ const Dashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Recent Activity Placeholder */}
         <div>
           <h2 className="text-2xl font-bold mb-6">Recent Activity</h2>
           <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">

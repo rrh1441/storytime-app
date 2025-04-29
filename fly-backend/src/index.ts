@@ -1,9 +1,4 @@
-// fly-backend/src/index.ts  •  Clean final version
-// -----------------------------------------------------------------------------
-// REST API entry‑point for StoryTime backend.
-// * /generate-story  – LLM story generation
-// * /tts             – OpenAI TTS → MP3 → Supabase Storage (service‑role)
-// -----------------------------------------------------------------------------
+// fly-backend/src/index.ts • Updated TTS route to link audio to story
 
 import express from "express";
 import cors from "cors";
@@ -14,34 +9,21 @@ import { generateStoryHandler } from "./services/story.js";
 import { generateSpeech, VOICES, type VoiceId } from "./services/tts.js";
 import { uploadAudio } from "./services/storage.js";
 
-/*───────────────────────────────────────────────────────────────────────────
-  Environment validation
-───────────────────────────────────────────────────────────────────────────*/
 const {
   PORT = "8080",
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   OPENAI_API_KEY,
+  SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
 if (!SUPABASE_URL) throw new Error("SUPABASE_URL env var is required.");
 if (!SUPABASE_ANON_KEY) throw new Error("SUPABASE_ANON_KEY env var is required.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY env var is required.");
+if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY env var is required.");
 
-/*───────────────────────────────────────────────────────────────────────────
-  Supabase anon client – only for public data & Auth endpoints
-───────────────────────────────────────────────────────────────────────────*/
-const supabasePublic: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-  },
-});
+const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-/*───────────────────────────────────────────────────────────────────────────
-  Express setup
-───────────────────────────────────────────────────────────────────────────*/
 const app = express();
 
 app.use(cors({
@@ -58,25 +40,17 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("dev"));
 
-/*───────────────────────────────────────────────────────────────────────────
-  Health check
-───────────────────────────────────────────────────────────────────────────*/
 app.get("/health", (_req, res) => res.status(200).send("OK"));
 
-/*───────────────────────────────────────────────────────────────────────────
-  Story generation
-───────────────────────────────────────────────────────────────────────────*/
 app.post("/generate-story", generateStoryHandler);
 
-/*───────────────────────────────────────────────────────────────────────────
-  TTS → MP3 upload (service‑role path)
-───────────────────────────────────────────────────────────────────────────*/
 app.post("/tts", async (req, res) => {
   try {
-    const { text, voice, language = "English" } = req.body as {
+    const { text, voice, language = "English", storyId } = req.body as {
       text: string;
       voice: string;
       language?: string;
+      storyId?: string;
     };
 
     if (!text?.trim() || !voice) {
@@ -86,19 +60,28 @@ app.post("/tts", async (req, res) => {
       return res.status(400).json({ error: `Unsupported voice: ${voice}` });
     }
 
-    const { mp3Buffer, contentType } = await generateSpeech(text, voice as VoiceId, language);
-    const audioUrl = await uploadAudio(`${Date.now()}.mp3`, mp3Buffer, contentType);
+    const { mp3Buffer, publicUrl } = await generateSpeech(text, voice, language);
 
-    return res.status(200).json({ audioUrl });
+    if (storyId && publicUrl) {
+      const { error } = await supabase
+        .from('stories')
+        .update({ audio_url: publicUrl })
+        .eq('id', storyId);
+
+      if (error) {
+        console.error(`[TTS] Failed to link audio_url for story ${storyId}:`, error);
+      } else {
+        console.log(`[TTS] audio_url linked to story ${storyId}`);
+      }
+    }
+
+    return res.status(200).json({ audioUrl: publicUrl });
   } catch (err: any) {
     console.error("[/tts]", err);
     return res.status(500).json({ error: err.message || "Failed to generate audio." });
   }
 });
 
-/*───────────────────────────────────────────────────────────────────────────
-  Listen
-───────────────────────────────────────────────────────────────────────────*/
 app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`✅  Backend listening on :${PORT}`);
 });

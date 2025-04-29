@@ -221,7 +221,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }): JSX.Element
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// -----------------------------------------------------------------------------
+// -----------------  ------------------------------------------------------------
 // Hook
 // -----------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-// fly-backend/src/index.ts  •  Updated to use generateStoryHandler properly
+// fly-backend/src/index.ts  •  Clean final version
 // -----------------------------------------------------------------------------
 // REST API entry‑point for StoryTime backend.
 // * /generate-story  – LLM story generation
@@ -12,7 +12,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { generateStoryHandler } from "./services/story.js";
 import { generateSpeech, VOICES, type VoiceId } from "./services/tts.js";
-import { uploadAudio } from "./services/storage.js";  // service‑role helper
+import { uploadAudio } from "./services/storage.js";
 
 /*───────────────────────────────────────────────────────────────────────────
   Environment validation
@@ -66,14 +66,7 @@ app.get("/health", (_req, res) => res.status(200).send("OK"));
 /*───────────────────────────────────────────────────────────────────────────
   Story generation
 ───────────────────────────────────────────────────────────────────────────*/
-app.post("/generate-story", async (req, res) => {
-  try {
-    await generateStoryHandler(req, res);
-  } catch (err: any) {
-    console.error("[/generate-story]", err);
-    return res.status(500).json({ error: err.message || "Failed to generate story." });
-  }
-});
+app.post("/generate-story", generateStoryHandler);
 
 /*───────────────────────────────────────────────────────────────────────────
   TTS → MP3 upload (service‑role path)
@@ -93,10 +86,7 @@ app.post("/tts", async (req, res) => {
       return res.status(400).json({ error: `Unsupported voice: ${voice}` });
     }
 
-    // 1. Generate speech (WAV → MP3) via OpenAI
-    const { mp3Buffer, contentType, publicUrl } = await generateSpeech(text, voice as VoiceId, language);
-
-    // 2. Store in Supabase Storage via service‑role client
+    const { mp3Buffer, contentType } = await generateSpeech(text, voice as VoiceId, language);
     const audioUrl = await uploadAudio(`${Date.now()}.mp3`, mp3Buffer, contentType);
 
     return res.status(200).json({ audioUrl });

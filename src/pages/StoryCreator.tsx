@@ -1,4 +1,5 @@
 // src/pages/StoryCreator.tsx
+// Correction: Added Authorization header to generateStory mutation fetch call.
 
 import React, {
   useEffect,
@@ -10,7 +11,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation } from "@tanstack/react-query";
-// Import useAuth correctly
+// Import useAuth correctly - includes session information
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
 // Import Link and useLocation
@@ -108,8 +109,8 @@ export type ActiveTab = "parameters" | "edit" | "voice" | "share";
 
 /* ─────────── Component ─────────── */
 const StoryCreator: React.FC = () => {
-  // Destructure user, profile, and loading state correctly
-  const { user, profile, loading: authLoading } = useAuth();
+  // Destructure user, profile, session and loading state correctly
+  const { user, profile, loading: authLoading, session } = useAuth(); // Added session
   const location = useLocation(); // Get location for potential redirects
 
   // Correct check for subscriber status using profile
@@ -268,27 +269,56 @@ const StoryCreator: React.FC = () => {
 
   /* ── mutations ──────────────────────────────────────────── */
   const generateStory = useMutation({
+    // *** MODIFICATION STARTS HERE ***
     mutationFn: async (data: FormValues) => {
-      const r = await fetch(`${API_BASE}/generate-story`, {
+      // Get the current session token from the Auth context
+      const token = session?.access_token;
+
+      // Log whether a token is found (useful for debugging)
+      if (!token) {
+        console.warn("No auth token found in frontend context for /generate-story request.");
+        // Depending on backend setup, this might lead to the anonymous user flow
+      } else {
+        console.log("Auth token found, including Authorization header.");
+      }
+
+      const response = await fetch(`${API_BASE}/generate-story`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Add the Authorization header *only if* the token exists
+          ...(token && { "Authorization": `Bearer ${token}` }),
+        },
         body: JSON.stringify(data),
       });
-      if (!r.ok) {
-          const errorText = await r.text();
-          throw new Error(errorText || `Story generation failed with status ${r.status}`);
+
+      // Improved error handling based on response status
+      if (!response.ok) {
+        let errorJson: { error?: string } = {};
+        try {
+          errorJson = await response.json(); // Try to parse error message from backend
+        } catch (parseError) {
+           console.warn("Failed to parse JSON error response from backend.");
+        }
+        const errorMessage = errorJson?.error || `Request failed with status ${response.status}`;
+        console.error("generateStory mutation failed:", errorMessage);
+        // Throw the specific error message from the backend if available
+        throw new Error(errorMessage);
       }
-      return (await r.json()) as { story: string; title: string };
+
+      return (await response.json()) as { story: string; title: string };
     },
+     // *** MODIFICATION ENDS HERE ***
     onSuccess: ({ story, title }) => {
       setStoryContent(story);
       setStoryTitle(title);
       setActiveTab("edit");
+      toast({ title: "Story Generated!", description: "Review and edit your new tale." });
     },
     onError: (e: Error) =>
       toast({
-        title: "Generation failed",
-        description: e.message,
+        title: "Story Generation Failed",
+        description: e.message || "An unknown error occurred.", // Use error message from throw
         variant: "destructive",
       }),
   });
@@ -296,6 +326,7 @@ const StoryCreator: React.FC = () => {
   const generateAudio = useMutation({
      mutationFn: async ({ text, voiceId }: { text: string; voiceId: string; }) => {
          const language = form.getValues("language");
+         // NOTE: If /tts endpoint also requires auth, add header here too using the same pattern
          const r = await fetch(`${API_BASE}/tts`, {
              method: "POST",
              headers: { "Content-Type": "application/json" },
@@ -314,10 +345,11 @@ const StoryCreator: React.FC = () => {
               previewAudioRef.current.pause();
               previewAudioRef.current.currentTime = 0;
           }
+         toast({ title: "Narration Ready!", description: "Your story audio has been generated." });
      },
      onError: (e: Error) =>
          toast({
-             title: "Audio failed",
+             title: "Audio Generation Failed",
              description: e.message,
              variant: "destructive",
          }),
@@ -801,5 +833,3 @@ const StoryCreator: React.FC = () => {
     </div>
   );
 };
-
-export default StoryCreator;

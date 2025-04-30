@@ -155,7 +155,7 @@ const Navbar = () => {
                   Log Out
                 </Button>
               </>
-            ) : ( // Show logged-out state if no user OR if still loading
+            ) : ( // Show logged-out state if no  user OR if still loading
               <div className="pt-4 space-y-4">
                 <Link to="/login" onClick={closeMobileMenu}>
                   <Button className="w-full font-medium rounded-full" variant="outline">

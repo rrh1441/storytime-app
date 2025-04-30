@@ -2,6 +2,8 @@
 // Correction: Added Authorization header to generateStory mutation fetch call.
 // *** CHANGE: Removed fixed grid classes from TabsList for responsiveness ***
 // *** CHANGE: Added flex-wrap and gap to TabsList for wrapping on mobile ***
+// *** CHANGE: Added authentication check before generating story ***
+// *** CHANGE: Removed anonymous generation warning log ***
 
 import React, {
   useEffect,
@@ -16,8 +18,8 @@ import { useMutation } from "@tanstack/react-query";
 // Import useAuth correctly - includes session information
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
-// Import Link and useLocation
-import { Link, useLocation } from "react-router-dom";
+// Import Link, useLocation, and useNavigate
+import { Link, useLocation, useNavigate } from "react-router-dom"; // Added useNavigate
 import { API_BASE } from "@/lib/apiBase";
 // Assuming these API helpers work with the current AuthContext setup or don't need the client explicitly
 import { getStory, patchStory } from "@/lib/storyApi";
@@ -117,6 +119,7 @@ const StoryCreator: React.FC = () => {
   // Destructure user, profile, session and loading state correctly
   const { user, profile, loading: authLoading, session } = useAuth(); // Added session
   const location = useLocation(); // Get location for potential redirects
+  const navigate = useNavigate(); // Get navigate for programmatic navigation
 
   // Correct check for subscriber status using profile
   const isSubscriber = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing';
@@ -304,20 +307,46 @@ const StoryCreator: React.FC = () => {
   /* ── mutations ──────────────────────────────────────────── */
   const generateStory = useMutation({
     mutationFn: async (data: FormValues) => {
+      // ==================== MODIFICATION 1 START ====================
+      // Check if user is logged in before proceeding
+      if (!user) {
+          toast({
+              title: "Login Required",
+              description: "Please log in or sign up to generate stories.",
+              variant: "destructive",
+              action: (
+                 // Navigate to login, passing current location and desired tab
+                 <Button variant="outline" size="sm" onClick={() => navigate('/login', { state: { from: location, returnToTab: 'parameters' }, replace: true })}>
+                   Log In
+                 </Button>
+              ),
+              duration: 5000, // Give user time to click
+          });
+          // Prevent the mutation from running if the user isn't logged in
+          throw new Error("User is not authenticated.");
+      }
+      // ==================== MODIFICATION 1 END ======================
+
       const token = session?.access_token;
-      if (!token && !user) { // Allow generation for anonymous maybe? Or check user explicitly.
-        // For now, let's require login
-         console.warn("User not logged in, attempting anonymous generation?");
-         // throw new Error("Please log in to generate stories.");
-      } else {
+
+      // ==================== MODIFICATION 2 START ====================
+      // REMOVED: console.warn("User not logged in, attempting anonymous generation?");
+      // ==================== MODIFICATION 2 END ======================
+
+      // Log if token is present (optional debugging)
+      if (token) {
         console.log("Auth token found, including Authorization header for generateStory.");
+      } else {
+        // This case should ideally not happen if the `if (!user)` check above works,
+        // but kept for robustness or if logic changes later.
+        console.warn("No auth token found for generateStory, proceeding without Authorization header (might fail if backend requires it).");
       }
 
       const response = await fetch(`${API_BASE}/generate-story`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token && { "Authorization": `Bearer ${token}` }),
+          ...(token && { "Authorization": `Bearer ${token}` }), // Include token if available
         },
         body: JSON.stringify(data),
       });
@@ -326,7 +355,26 @@ const StoryCreator: React.FC = () => {
         let errorJson: { error?: string } = {};
         try { errorJson = await response.json(); } catch (parseError) { /* ignore */ }
         const errorMessage = errorJson?.error || `Request failed with status ${response.status}`;
-        console.error("generateStory mutation failed:", errorMessage);
+        console.error("generateStory mutation failed:", errorMessage, "| Status:", response.status);
+
+        // ==================== MODIFICATION 3 START ====================
+        // Specific handling for 401 Unauthorized
+        if (response.status === 401) {
+             toast({
+                 title: "Authentication Error",
+                 description: errorMessage || "Your session might be invalid. Please try logging in again.",
+                 variant: "destructive",
+                 action: (
+                     <Button variant="outline" size="sm" onClick={() => navigate('/login', { state: { from: location }, replace: true })}>
+                       Log In
+                     </Button>
+                  ),
+                 duration: 5000,
+             });
+        }
+        // ==================== MODIFICATION 3 END ======================
+
+        // Throw the error message to be caught by onError
         throw new Error(errorMessage);
       }
 
@@ -339,20 +387,32 @@ const StoryCreator: React.FC = () => {
       setActiveTab("edit");
       toast({ title: "Story Generated!", description: "Review and edit your new tale." });
     },
-    onError: (e: Error) =>
-      toast({
-        title: "Story Generation Failed",
-        description: e.message || "An unknown error occurred.",
-        variant: "destructive",
-      }),
+    // ==================== MODIFICATION 4 START ====================
+    onError: (e: Error) => {
+        // Avoid showing generic toast if a specific one (like "Login Required" or 401) was already shown
+        if (e.message !== "User is not authenticated." && !e.message.includes("session might be invalid")) {
+            toast({
+                title: "Story Generation Failed",
+                description: e.message || "An unknown error occurred.",
+                variant: "destructive",
+            });
+        }
+    },
+    // ==================== MODIFICATION 4 END ======================
   });
 
   const generateAudio = useMutation({
      mutationFn: async ({ text, voiceId, storyId }: { text: string; voiceId: string; storyId: string | null; }) => {
+         // Note: We might also add an authentication check here if the /tts endpoint requires it
+         if (!user) {
+             toast({ title: "Login Required", description: "Please log in to generate audio.", variant: "destructive" });
+             throw new Error("User not authenticated for TTS.");
+         }
          if (!storyId) { throw new Error("Story ID is missing. Please generate a story first."); }
+
          const language = form.getValues("language");
-         // Add token if needed by TTS endpoint
-         const token = session?.access_token;
+         const token = session?.access_token; // Get token for TTS endpoint if needed
+
          const r = await fetch(`${API_BASE}/tts`, {
              method: "POST",
              headers: {
@@ -361,11 +421,17 @@ const StoryCreator: React.FC = () => {
              },
              body: JSON.stringify({ text, voice: voiceId, language, storyId }),
          });
+
          if (!r.ok) {
              let errorJson: { error?: string } = {};
              try { errorJson = await r.json(); } catch(e) { /* ignore */ }
-             const errorText = errorJson.error || await r.text(); // Use JSON error first
-             throw new Error(errorText || `Audio generation failed with status ${r.status}`);
+             const errorText = errorJson.error || await r.text() || `Audio generation failed with status ${r.status}`; // Use JSON error first, fallback to text or status
+             console.error("generateAudio mutation failed:", errorText, "| Status:", r.status);
+             // Handle 401 specifically for TTS too
+             if (r.status === 401) {
+                toast({ title: "Authentication Error", description: "Session invalid for audio generation. Please log in.", variant: "destructive"});
+             }
+             throw new Error(errorText);
          }
          return (await r.json()).audioUrl as string;
      },
@@ -378,17 +444,17 @@ const StoryCreator: React.FC = () => {
               previewAudioRef.current.currentTime = 0;
           }
          toast({ title: "Narration Ready!", description: "Your story audio has been generated." });
-         // Optionally patch story with audio_url and voice_id here if desired
-         // if (storyId && selectedVoiceId) {
-         //    patchStory(storyId, { audio_url: url, voice_id: selectedVoiceId }).catch(console.error);
-         // }
      },
-     onError: (e: Error) =>
-         toast({
-             title: "Audio Generation Failed",
-             description: e.message,
-             variant: "destructive",
-         }),
+     onError: (e: Error) => {
+        // Avoid double-toasting if specific error already handled (like 401 or user not logged in)
+        if (e.message !== "User not authenticated for TTS." && !e.message.includes("Session invalid")) {
+            toast({
+                title: "Audio Generation Failed",
+                description: e.message || "An unknown error occurred.",
+                variant: "destructive",
+            });
+        }
+     }
   });
 
 
@@ -417,6 +483,9 @@ const StoryCreator: React.FC = () => {
       );
   }
 
+  // Existing length check logic remains correct as it depends on `isSubscriber`
+  // const disabled = !isSubscriber && len !== 3;
+
   /* ── UI ─────────────────────────────────────────────────── */
   return (
     <div
@@ -440,14 +509,13 @@ const StoryCreator: React.FC = () => {
               onValueChange={(v) => setActiveTab(v as ActiveTab)}
               className="space-y-6"
             >
-              {/* *** MODIFICATION HERE: Removed overflow/nowrap, added flex-wrap and gap *** */}
+              {/* TabsList with flex-wrap and gap for responsiveness */}
               <TabsList className="flex flex-wrap h-auto justify-start gap-x-2 gap-y-1 sm:justify-center">
                  <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4 flex-shrink-0" /> Story Outline</TabsTrigger>
                  <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4 flex-shrink-0" /> Edit / Preview</TabsTrigger>
                  <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4 flex-shrink-0" /> Voice & Audio</TabsTrigger>
                  <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4 flex-shrink-0" /> Share Story</TabsTrigger>
               </TabsList>
-              {/* *** END MODIFICATION *** */}
 
 
               {/* ───────────────────────────── parameters */}
@@ -512,7 +580,7 @@ const StoryCreator: React.FC = () => {
                             onValueChange={(v) => field.onChange(Number(v))}
                           >
                             {LENGTH_OPTIONS.map((len) => {
-                              // Use isSubscriber from context
+                              // Check if the user is NOT a subscriber AND the length is NOT 3 minutes
                               const disabled = !isSubscriber && len !== 3;
                               return (
                                 <div key={len} className="flex items-center">
@@ -535,13 +603,13 @@ const StoryCreator: React.FC = () => {
                               );
                             })}
                           </RadioGroup>
-                          {/* Use user from context */}
+                          {/* Prompt to log in if not logged in */}
                           {!user && (
                                <p className="mt-1 text-xs text-muted-foreground">
                                    <Link to="/login" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">Log in</Link> or <Link to="/signup" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">sign up</Link> to create longer stories.
                                </p>
                           )}
-                          {/* Use user and isSubscriber from context */}
+                          {/* Prompt to upgrade if logged in but not subscriber */}
                           {user && !isSubscriber && (
                               <p className="mt-1 text-xs text-muted-foreground">
                                   Want longer tales? <Link to="/pricing" className="text-primary underline">Upgrade your plan!</Link>
@@ -646,6 +714,7 @@ const StoryCreator: React.FC = () => {
                       disabled={
                         generateStory.isPending || !form.formState.isValid
                       }
+                      // Use handleSubmit to trigger validation before calling mutate
                       onClick={form.handleSubmit((data) => generateStory.mutate(data))}
                     >
                       {generateStory.isPending ? (
@@ -691,7 +760,7 @@ const StoryCreator: React.FC = () => {
                                 <article className="prose prose-sm max-h-[calc(theme(space.96)_*_2)] overflow-y-auto rounded-md border bg-background p-4">
                                     {storyContent
                                         .split("\n")
-                                        .filter(p => p.trim() !== '')
+                                        .filter(p => p.trim() !== '') // Filter out empty paragraphs
                                         .map((p, i) => <p key={i}>{p.replace(/^#\s+/, "")}</p>)}
                                 </article>
                             </div>

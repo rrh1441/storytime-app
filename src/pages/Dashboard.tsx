@@ -5,8 +5,8 @@ import { supabase } from '@/integrations/supabase/client'; // Using direct impor
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom'; // *** ADDED: Import Link for navigation ***
-import { PlusCircle } from 'lucide-react'; // *** ADDED: Icon for the button ***
+import { Link } from 'react-router-dom'; // Import Link for navigation
+import { PlusCircle } from 'lucide-react'; // Icon for the button
 
 const Dashboard: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
@@ -53,20 +53,24 @@ const Dashboard: React.FC = () => {
             <h1 className="text-2xl font-bold mb-4">
               Welcome, {profile?.name || user?.email || 'Storyteller'}
             </h1>
-            <p className="text-sm text-muted-foreground mb-6">
-              Usage: {minutesUsed} / {minutesLimit} minutes
-            </p>
+            {/* Check profile exists before showing usage */}
+            {profile && minutesLimit > 0 && (
+                 <p className="text-sm text-muted-foreground mb-6">
+                    Usage: {minutesUsed} / {minutesLimit} minutes
+                 </p>
+            )}
 
-            {/* *** ADDED: Button section *** */}
+            {/* Button section */}
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Your Stories</h2>
               <Button asChild className="bg-storytime-blue hover:bg-storytime-blue/90">
-                <Link to="/stories/new">
+                {/* *** CHANGED: Updated Link destination *** */}
+                <Link to="/create-story">
                   <PlusCircle className="mr-2 h-4 w-4" /> Create New Story
                 </Link>
               </Button>
             </div>
-            {/* *** END ADDED SECTION *** */}
+            {/* *** END CHANGE *** */}
 
             {/* Story list rendering logic */}
             {isLoading ? (

@@ -1,5 +1,6 @@
 // src/pages/StoryCreator.tsx
 // Correction: Added Authorization header to generateStory mutation fetch call.
+// *** CHANGE: Removed fixed grid classes from TabsList for responsiveness ***
 
 import React, {
   useEffect,
@@ -17,6 +18,9 @@ import { toast } from "@/hooks/use-toast";
 // Import Link and useLocation
 import { Link, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/apiBase";
+// Assuming these API helpers work with the current AuthContext setup or don't need the client explicitly
+import { getStory, patchStory } from "@/lib/storyApi";
+
 
 /* ─────────── UI components ─────────── */
 import { Button } from "@/components/ui/button";
@@ -157,6 +161,10 @@ const StoryCreator: React.FC = () => {
           toast({ title: "Playback Error", description: "Could not load main audio.", variant: "destructive" });
           setIsPlaying(false);
       }
+    } else {
+        if(audioRef.current.src !== generatedAudioUrl) {
+            audioRef.current.src = generatedAudioUrl;
+        }
     }
 
     if (isPlaying) {
@@ -177,6 +185,18 @@ const StoryCreator: React.FC = () => {
         });
     }
   };
+   // Cleanup audio element on unmount
+  useEffect(() => {
+      const currentAudioRef = audioRef.current;
+      return () => {
+          currentAudioRef?.pause();
+          if (currentAudioRef) {
+             currentAudioRef.onended = null;
+             currentAudioRef.onerror = null;
+             currentAudioRef.src = '';
+          }
+      };
+  }, []);
 
   const handleCopyLink = () => {
      if (!generatedAudioUrl) return;
@@ -198,7 +218,7 @@ const StoryCreator: React.FC = () => {
      a.style.display = "none";
      document.body.appendChild(a);
      a.click();
-     a.remove();
+     a.remove(); // Changed from removeChild(a) for robustness
   };
 
   const handleOpen = () => {
@@ -209,7 +229,8 @@ const StoryCreator: React.FC = () => {
   /* ── Voice Preview Handling ────────── */
   const handleVoicePreview = (voiceId: string) => {
      setSelectedVoiceId(voiceId);
-     setGeneratedAudioUrl(null);
+     // Don't clear generated URL when just previewing
+     // setGeneratedAudioUrl(null);
 
      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
      if (!supabaseUrl) {
@@ -234,7 +255,7 @@ const StoryCreator: React.FC = () => {
          const errorDetails = target.error ? ` Code ${target.error.code}: ${target.error.message}` : '';
          toast({
            title: "Preview Error",
-           description: `Could not load audio file from Supabase Storage. Check bucket permissions and file existence.${errorDetails}`,
+           description: `Could not load audio file. Check Supabase Storage permissions/file existence.${errorDetails}`,
            variant: "destructive",
          });
        };
@@ -253,6 +274,17 @@ const StoryCreator: React.FC = () => {
          });
      });
   };
+   // Cleanup preview audio on unmount
+   useEffect(() => {
+      const currentPreviewRef = previewAudioRef.current;
+      return () => {
+          currentPreviewRef?.pause();
+          if (currentPreviewRef) {
+            currentPreviewRef.onerror = null;
+            currentPreviewRef.src = ''; // Release resource
+          }
+      };
+  }, []);
 
   /* ── form ──────────────────────────────── */
   const form = useForm<FormValues>({
@@ -270,74 +302,68 @@ const StoryCreator: React.FC = () => {
 
   /* ── mutations ──────────────────────────────────────────── */
   const generateStory = useMutation({
-    // *** MODIFICATION STARTS HERE ***
     mutationFn: async (data: FormValues) => {
-      // Get the current session token from the Auth context
       const token = session?.access_token;
-
-      // Log whether a token is found (useful for debugging)
-      if (!token) {
-        console.warn("No auth token found in frontend context for /generate-story request.");
-        // Depending on backend setup, this might lead to the anonymous user flow
+      if (!token && !user) { // Allow generation for anonymous maybe? Or check user explicitly.
+        // For now, let's require login
+         console.warn("User not logged in, attempting anonymous generation?");
+         // throw new Error("Please log in to generate stories.");
       } else {
-        console.log("Auth token found, including Authorization header.");
+        console.log("Auth token found, including Authorization header for generateStory.");
       }
 
       const response = await fetch(`${API_BASE}/generate-story`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Add the Authorization header *only if* the token exists
           ...(token && { "Authorization": `Bearer ${token}` }),
         },
         body: JSON.stringify(data),
       });
 
-      // Improved error handling based on response status
       if (!response.ok) {
         let errorJson: { error?: string } = {};
-        try {
-          errorJson = await response.json(); // Try to parse error message from backend
-        } catch (parseError) {
-           console.warn("Failed to parse JSON error response from backend.");
-        }
+        try { errorJson = await response.json(); } catch (parseError) { /* ignore */ }
         const errorMessage = errorJson?.error || `Request failed with status ${response.status}`;
         console.error("generateStory mutation failed:", errorMessage);
-        // Throw the specific error message from the backend if available
         throw new Error(errorMessage);
       }
 
       return (await response.json()) as { story: string; title: string; storyId: string };
     },
-     // *** MODIFICATION ENDS HERE ***
-    onSuccess: ({ story, title, storyId }) => {
+    onSuccess: ({ story, title, storyId: newStoryId }) => { // Renamed storyId
       setStoryContent(story);
       setStoryTitle(title);
-      setStoryId(storyId);
+      setStoryId(newStoryId); // Set the new story ID
       setActiveTab("edit");
       toast({ title: "Story Generated!", description: "Review and edit your new tale." });
     },
     onError: (e: Error) =>
       toast({
         title: "Story Generation Failed",
-        description: e.message || "An unknown error occurred.", // Use error message from throw
+        description: e.message || "An unknown error occurred.",
         variant: "destructive",
       }),
   });
 
   const generateAudio = useMutation({
      mutationFn: async ({ text, voiceId, storyId }: { text: string; voiceId: string; storyId: string | null; }) => {
-         if (!storyId) {
-             throw new Error("Story ID is missing. Please generate a story first.");
-         }
+         if (!storyId) { throw new Error("Story ID is missing. Please generate a story first."); }
          const language = form.getValues("language");
+         // Add token if needed by TTS endpoint
+         const token = session?.access_token;
          const r = await fetch(`${API_BASE}/tts`, {
              method: "POST",
-             headers: { "Content-Type": "application/json" },
+             headers: {
+                "Content-Type": "application/json",
+                ...(token && { "Authorization": `Bearer ${token}` }), // Pass token if TTS needs it
+             },
              body: JSON.stringify({ text, voice: voiceId, language, storyId }),
          });
          if (!r.ok) {
-             const errorText = await r.text();
+             let errorJson: { error?: string } = {};
+             try { errorJson = await r.json(); } catch(e) { /* ignore */ }
+             const errorText = errorJson.error || await r.text(); // Use JSON error first
              throw new Error(errorText || `Audio generation failed with status ${r.status}`);
          }
          return (await r.json()).audioUrl as string;
@@ -345,11 +371,16 @@ const StoryCreator: React.FC = () => {
      onSuccess: (url) => {
          setGeneratedAudioUrl(url);
          setActiveTab("share");
+         // Stop preview audio if it was playing
           if (previewAudioRef.current) {
               previewAudioRef.current.pause();
               previewAudioRef.current.currentTime = 0;
           }
          toast({ title: "Narration Ready!", description: "Your story audio has been generated." });
+         // Optionally patch story with audio_url and voice_id here if desired
+         // if (storyId && selectedVoiceId) {
+         //    patchStory(storyId, { audio_url: url, voice_id: selectedVoiceId }).catch(console.error);
+         // }
      },
      onError: (e: Error) =>
          toast({
@@ -372,10 +403,10 @@ const StoryCreator: React.FC = () => {
   const additionalChars = (
     form.watch("additionalInstructions") || ""
   ).length;
-  const watchLanguage = form.watch("language");
+  const watchLanguage = form.watch("language"); // Can use this if needed e.g. for voice filtering
 
   // --- Render Logic ---
-  // Show loading state while auth/profile is loading
+  // Use loading state from useAuth
   if (authLoading) {
       return (
           <div className="min-h-screen bg-storytime-background py-12 flex items-center justify-center">
@@ -408,12 +439,15 @@ const StoryCreator: React.FC = () => {
               onValueChange={(v) => setActiveTab(v as ActiveTab)}
               className="space-y-6"
             >
-              <TabsList className="grid w-full grid-cols-4">
-                 <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4" /> Story Outline</TabsTrigger>
-                 <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4" /> Edit / Preview</TabsTrigger>
-                 <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4" /> Voice & Audio</TabsTrigger>
-                 <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4" /> Share Story</TabsTrigger>
+              {/* *** MODIFICATION HERE: Removed grid classes from TabsList *** */}
+              <TabsList className="h-auto justify-start overflow-x-auto whitespace-nowrap sm:justify-center">
+                 <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4 flex-shrink-0" /> Story Outline</TabsTrigger>
+                 <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4 flex-shrink-0" /> Edit / Preview</TabsTrigger>
+                 <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4 flex-shrink-0" /> Voice & Audio</TabsTrigger>
+                 <TabsTrigger value="share" disabled={!generatedAudioUrl}><Share2 className="mr-1 h-4 w-4 flex-shrink-0" /> Share Story</TabsTrigger>
               </TabsList>
+              {/* *** END MODIFICATION *** */}
+
 
               {/* ───────────────────────────── parameters */}
               <TabsContent value="parameters">
@@ -477,7 +511,7 @@ const StoryCreator: React.FC = () => {
                             onValueChange={(v) => field.onChange(Number(v))}
                           >
                             {LENGTH_OPTIONS.map((len) => {
-                              // Corrected isSubscriber check applied here
+                              // Use isSubscriber from context
                               const disabled = !isSubscriber && len !== 3;
                               return (
                                 <div key={len} className="flex items-center">
@@ -500,12 +534,13 @@ const StoryCreator: React.FC = () => {
                               );
                             })}
                           </RadioGroup>
-                          {/* Conditional prompts */}
+                          {/* Use user from context */}
                           {!user && (
                                <p className="mt-1 text-xs text-muted-foreground">
                                    <Link to="/login" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">Log in</Link> or <Link to="/signup" state={{ from: location, returnToTab: activeTab }} className="text-primary underline">sign up</Link> to create longer stories.
                                </p>
                           )}
+                          {/* Use user and isSubscriber from context */}
                           {user && !isSubscriber && (
                               <p className="mt-1 text-xs text-muted-foreground">
                                   Want longer tales? <Link to="/pricing" className="text-primary underline">Upgrade your plan!</Link>
@@ -629,208 +664,208 @@ const StoryCreator: React.FC = () => {
               </TabsContent>
 
               {/* ───────────────────────────── edit / preview */}
-              <TabsContent value="edit">
-                   <Card>
-                       <CardHeader>
-                           <CardTitle>Edit & Preview Story</CardTitle>
-                           <CardDescription>
-                               Review and edit the generated story text below. The title "<span className="italic font-medium">{storyTitle || 'Generated Story'}</span>" was created by the AI.
-                           </CardDescription>
-                       </CardHeader>
-                       <CardContent className="grid gap-4 md:grid-cols-2">
-                           <div>
-                               <Label htmlFor="story-editor" className="mb-1 block">
-                                   Edit Text
-                               </Label>
-                               <Textarea
-                                   id="story-editor"
-                                   value={storyContent}
-                                   onChange={(e) => setStoryContent(e.target.value)}
-                                   rows={20}
-                                   className="resize-y"
-                               />
-                           </div>
-                           <div>
-                               <Label className="mb-1 block">Preview</Label>
-                               <article className="prose prose-sm max-h-[calc(theme(space.96)_*_2)] overflow-y-auto rounded-md border bg-background p-4">
-                                   {storyContent
-                                       .split("\n")
-                                       .filter(p => p.trim() !== '')
-                                       .map((p, i) => <p key={i}>{p.replace(/^#\s+/, "")}</p>)}
-                               </article>
-                           </div>
-                       </CardContent>
-                       <CardFooter>
-                           <Button
-                               type="button"
-                               className="ml-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
-                               onClick={() => setActiveTab("voice")}
-                               disabled={!storyContent.trim()}
-                           >
-                               Continue to Voice & Audio
-                           </Button>
-                       </CardFooter>
-                   </Card>
-              </TabsContent>
+               <TabsContent value="edit">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Edit & Preview Story</CardTitle>
+                            <CardDescription>
+                                Review and edit the generated story text below. The title "<span className="italic font-medium">{storyTitle || 'Generated Story'}</span>" was created by the AI.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <Label htmlFor="story-editor" className="mb-1 block">
+                                    Edit Text
+                                </Label>
+                                <Textarea
+                                    id="story-editor"
+                                    value={storyContent}
+                                    onChange={(e) => setStoryContent(e.target.value)}
+                                    rows={20}
+                                    className="resize-y"
+                                />
+                            </div>
+                            <div>
+                                <Label className="mb-1 block">Preview</Label>
+                                <article className="prose prose-sm max-h-[calc(theme(space.96)_*_2)] overflow-y-auto rounded-md border bg-background p-4">
+                                    {storyContent
+                                        .split("\n")
+                                        .filter(p => p.trim() !== '')
+                                        .map((p, i) => <p key={i}>{p.replace(/^#\s+/, "")}</p>)}
+                                </article>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button
+                                type="button"
+                                className="ml-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
+                                onClick={() => setActiveTab("voice")}
+                                disabled={!storyContent.trim()}
+                            >
+                                Continue to Voice & Audio
+                            </Button>
+                        </CardFooter>
+                    </Card>
+               </TabsContent>
 
               {/* ───────────────────────────── voice / audio */}
                <TabsContent value="voice">
-                    <Card>
-                       <CardHeader>
-                           <CardTitle>Add Narration</CardTitle>
-                           <CardDescription>
-                               Select a voice below to preview it and set it for narration. (Language: {watchLanguage})
-                           </CardDescription>
-                       </CardHeader>
-                       <CardContent className="space-y-6">
-                           {/* Voice select buttons */}
-                           <div className="space-y-4">
-                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                   {SUPPORTED_VOICES.map((v) => (
-                                       <Button
-                                           key={v.id}
-                                           variant={selectedVoiceId === v.id ? "default" : "outline"}
-                                           size="sm"
-                                           onClick={() => handleVoicePreview(v.id)}
-                                            className={`flex min-w-[100px] items-center justify-start gap-1.5 rounded-md px-3 py-2 text-left transition-all sm:min-w-[120px] ${
-                                                selectedVoiceId === v.id
-                                                    ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90 ring-2 ring-offset-2 ring-storytime-blue'
-                                                    : 'text-gray-700 hover:bg-gray-100'
-                                            }`}
-                                       >
-                                           {selectedVoiceId === v.id ? (
-                                               <Check className="h-4 w-4 flex-shrink-0" />
-                                           ) : (
-                                               <Play className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                           )}
-                                           <span className="truncate">{v.label}</span>
-                                       </Button>
-                                   ))}
-                               </div>
-                               <audio ref={previewAudioRef} className="hidden" preload="auto" />
-                           </div>
+                     <Card>
+                        <CardHeader>
+                            <CardTitle>Add Narration</CardTitle>
+                            <CardDescription>
+                                Select a voice below to preview it and set it for narration. (Language: {watchLanguage})
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Voice select buttons */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                    {SUPPORTED_VOICES.map((v) => (
+                                        <Button
+                                            key={v.id}
+                                            variant={selectedVoiceId === v.id ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => handleVoicePreview(v.id)}
+                                             className={`flex min-w-[100px] items-center justify-start gap-1.5 rounded-md px-3 py-2 text-left transition-all sm:min-w-[120px] ${
+                                                 selectedVoiceId === v.id
+                                                     ? 'bg-storytime-blue text-white hover:bg-storytime-blue/90 ring-2 ring-offset-2 ring-storytime-blue'
+                                                     : 'text-gray-700 hover:bg-gray-100'
+                                             }`}
+                                        >
+                                            {selectedVoiceId === v.id ? (
+                                                <Check className="h-4 w-4 flex-shrink-0" />
+                                            ) : (
+                                                <Play className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                                            )}
+                                            <span className="truncate">{v.label}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                                <audio ref={previewAudioRef} className="hidden" preload="auto" />
+                            </div>
 
-                           <Button
-                               type="button"
-                               className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
-                               onClick={() => {
-                                   if (storyContent && selectedVoiceId) {
-                                       generateAudio.mutate({
-                                           text: storyContent,
-                                           voiceId: selectedVoiceId,
-                                           storyId,
-                                       });
-                                   }
-                               }}
-                               disabled={
-                                   generateAudio.isPending ||
-                                   !selectedVoiceId ||
-                                   !storyContent.trim() ||
-                                   !SUPPORTED_LANGUAGES.includes(form.getValues("language"))
-                               }
-                           >
-                               {generateAudio.isPending ? (
-                                   <>
-                                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                       Generating…(~60s)
-                                   </>
-                               ) : (
-                                   <>
-                                       <Mic className="mr-2 h-4 w-4" />
-                                       Generate Narration
-                                   </>
-                               )}
-                           </Button>
+                            <Button
+                                type="button"
+                                className="w-full bg-storytime-blue text-white hover:bg-storytime-blue/90"
+                                onClick={() => {
+                                    if (storyContent && selectedVoiceId) {
+                                        generateAudio.mutate({
+                                            text: storyContent,
+                                            voiceId: selectedVoiceId,
+                                            storyId, // Pass the current storyId
+                                        });
+                                    }
+                                }}
+                                disabled={
+                                    generateAudio.isPending ||
+                                    !selectedVoiceId ||
+                                    !storyContent.trim() ||
+                                    !SUPPORTED_LANGUAGES.includes(form.getValues("language")) // Prevent generation if language mismatch
+                                }
+                            >
+                                {generateAudio.isPending ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Generating…(~60s)
+                                    </>
+                                ) : (
+                                    <>
+                                        <Mic className="mr-2 h-4 w-4" />
+                                        Generate Narration
+                                    </>
+                                )}
+                            </Button>
 
-                           {generateAudio.isError && (
-                               <Alert variant="destructive">
-                                   <AlertCircle className="h-4 w-4" />
-                                   <AlertTitle>Error Generating Audio</AlertTitle>
-                                   <AlertDescription>
-                                       {generateAudio.error instanceof Error
-                                           ? generateAudio.error.message
-                                           : "An unknown error occurred."}
-                                   </AlertDescription>
-                               </Alert>
-                           )}
-                       </CardContent>
-                   </Card>
-              </TabsContent>
+                            {generateAudio.isError && (
+                                <Alert variant="destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>Error Generating Audio</AlertTitle>
+                                    <AlertDescription>
+                                        {generateAudio.error instanceof Error
+                                            ? generateAudio.error.message
+                                            : "An unknown error occurred."}
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                        </CardContent>
+                    </Card>
+               </TabsContent>
 
               {/* ───────────────────────────── share */}
               <TabsContent value="share">
-                 <Card>
-                     <CardHeader>
-                         <CardTitle>Share Your Story: <span className="italic">{storyTitle || 'Generated Story'}</span></CardTitle>
-                         <CardDescription>
-                             Listen, copy link, download, or open your narrated story.
-                         </CardDescription>
-                     </CardHeader>
-                     <CardContent>
-                         <div className="flex flex-wrap justify-center gap-4">
-                             {/* Play / Pause */}
-                             <Button
-                                 aria-label={isPlaying ? "Pause audio" : "Play audio"}
-                                 className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
-                                 onClick={handlePlayPause}
-                                 disabled={!generatedAudioUrl || generateAudio.isPending}
-                             >
-                                 {isPlaying ? (
-                                     <PauseCircle className="h-6 w-6" />
-                                 ) : (
-                                     <PlayCircle className="h-6 w-6" />
-                                 )}
-                                 {isPlaying ? "Pause" : "Play"}
-                             </Button>
+                  <Card>
+                      <CardHeader>
+                          <CardTitle>Share Your Story: <span className="italic">{storyTitle || 'Generated Story'}</span></CardTitle>
+                          <CardDescription>
+                              Listen, copy link, download, or open your narrated story.
+                          </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                          <div className="flex flex-wrap justify-center gap-4">
+                              {/* Play / Pause */}
+                              <Button
+                                  aria-label={isPlaying ? "Pause audio" : "Play audio"}
+                                  className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto bg-storytime-blue text-white hover:bg-storytime-blue/90"
+                                  onClick={handlePlayPause}
+                                  disabled={!generatedAudioUrl || generateAudio.isPending}
+                              >
+                                  {isPlaying ? (
+                                      <PauseCircle className="h-6 w-6" />
+                                  ) : (
+                                      <PlayCircle className="h-6 w-6" />
+                                  )}
+                                  {isPlaying ? "Pause" : "Play"}
+                              </Button>
 
-                             {/* Copy link */}
-                             <Button
-                                 aria-label="Copy link"
-                                 className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
-                                 onClick={handleCopyLink}
-                                 disabled={!generatedAudioUrl || generateAudio.isPending}
-                             >
-                                 <CopyIcon className="h-6 w-6" />
-                                 Copy
-                             </Button>
+                              {/* Copy link */}
+                              <Button
+                                  aria-label="Copy link"
+                                  className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
+                                  onClick={handleCopyLink}
+                                  disabled={!generatedAudioUrl || generateAudio.isPending}
+                              >
+                                  <CopyIcon className="h-6 w-6" />
+                                  Copy
+                              </Button>
 
-                             {/* Download */}
-                             <Button
-                                 aria-label="Download MP3"
-                                 className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
-                                 onClick={handleDownload}
-                                 disabled={!generatedAudioUrl || generateAudio.isPending}
-                             >
-                                 <DownloadIcon className="h-6 w-6" />
-                                 Download
-                             </Button>
+                              {/* Download */}
+                              <Button
+                                  aria-label="Download MP3"
+                                  className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
+                                  onClick={handleDownload}
+                                  disabled={!generatedAudioUrl || generateAudio.isPending}
+                              >
+                                  <DownloadIcon className="h-6 w-6" />
+                                  Download
+                              </Button>
 
-                             {/* Open in new tab */}
-                             <Button
-                                 aria-label="Open in new tab"
-                                 className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
-                                 onClick={handleOpen}
-                                 disabled={!generatedAudioUrl || generateAudio.isPending}
-                             >
-                                 <LinkIcon className="h-6 w-6" />
-                                 Open
-                             </Button>
-                         </div>
-                     </CardContent>
-                      <CardFooter>
-                          {!generatedAudioUrl && !generateAudio.isPending && (
-                              <p className="w-full text-center text-sm text-muted-foreground">
-                                  Generate narration first to enable sharing actions.
-                              </p>
-                          )}
-                           {generateAudio.isPending && (
-                              <p className="w-full text-center text-sm text-muted-foreground">
-                                  Generating audio... sharing actions will be enabled shortly.
-                              </p>
-                          )}
-                      </CardFooter>
-                 </Card>
-              </TabsContent>
+                              {/* Open in new tab */}
+                              <Button
+                                  aria-label="Open in new tab"
+                                  className="flex items-center gap-2 rounded-full px-6 py-4 font-semibold shadow-sm transition-colors w-full sm:w-auto border-2 border-storytime-blue bg-white text-storytime-blue hover:bg-storytime-blue hover:text-white"
+                                  onClick={handleOpen}
+                                  disabled={!generatedAudioUrl || generateAudio.isPending}
+                              >
+                                  <LinkIcon className="h-6 w-6" />
+                                  Open
+                              </Button>
+                          </div>
+                      </CardContent>
+                       <CardFooter>
+                           {!generatedAudioUrl && !generateAudio.isPending && (
+                               <p className="w-full text-center text-sm text-muted-foreground">
+                                   Generate narration first to enable sharing actions.
+                               </p>
+                           )}
+                            {generateAudio.isPending && (
+                               <p className="w-full text-center text-sm text-muted-foreground">
+                                   Generating audio... sharing actions will be enabled shortly.
+                               </p>
+                           )}
+                       </CardFooter>
+                  </Card>
+               </TabsContent>
             </Tabs>
           </form>
         </Form>

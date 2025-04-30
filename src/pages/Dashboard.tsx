@@ -1,9 +1,12 @@
+// src/pages/Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client'; // Using direct import as per provided code
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom'; // *** ADDED: Import Link for navigation ***
+import { PlusCircle } from 'lucide-react'; // *** ADDED: Icon for the button ***
 
 const Dashboard: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
@@ -18,16 +21,18 @@ const Dashboard: React.FC = () => {
   const { data: stories, isLoading, refetch } = useQuery({
     queryKey: ['stories', user?.id],
     queryFn: async () => {
+      // Ensure user is defined before accessing user.id
+      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('stories')
         .select('id, title, created_at, audio_url')
-        .eq('user_id', user!.id)
+        .eq('user_id', user.id) // Use user.id safely here
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data;
     },
-    enabled: ready,
+    enabled: ready, // ready already ensures user.id exists and authLoading is false
     staleTime: 5 * 60 * 1000,
   });
 
@@ -51,7 +56,19 @@ const Dashboard: React.FC = () => {
             <p className="text-sm text-muted-foreground mb-6">
               Usage: {minutesUsed} / {minutesLimit} minutes
             </p>
-            <h2 className="text-xl font-semibold mb-2">Your Stories</h2>
+
+            {/* *** ADDED: Button section *** */}
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Your Stories</h2>
+              <Button asChild className="bg-storytime-blue hover:bg-storytime-blue/90">
+                <Link to="/stories/new">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Create New Story
+                </Link>
+              </Button>
+            </div>
+            {/* *** END ADDED SECTION *** */}
+
+            {/* Story list rendering logic */}
             {isLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-5 w-3/4" />
@@ -59,7 +76,7 @@ const Dashboard: React.FC = () => {
               </div>
             ) : stories && stories.length > 0 ? (
               <ul className="space-y-2">
-                {stories.map((story: any) => (
+                {stories.map((story: any) => ( // Consider defining a stricter type for story
                   <li key={story.id} className="bg-white p-4 rounded shadow">
                     <p className="font-medium">{story.title || 'Untitled Story'}</p>
                     <p className="text-sm text-muted-foreground mb-2">
@@ -71,9 +88,11 @@ const Dashboard: React.FC = () => {
                         <Button variant="outline" onClick={() => navigator.clipboard.writeText(story.audio_url)}>Copy Link</Button>
                         <Button variant="outline" onClick={() => {
                           const a = document.createElement('a');
-                          a.href = story.audio_url;
+                          a.href = story.audio_url!; // Add non-null assertion if confident
                           a.download = `${story.title || 'story'}.mp3`;
+                          document.body.appendChild(a); // Append before click
                           a.click();
+                          document.body.removeChild(a); // Clean up element
                         }}>Download</Button>
                       </div>
                     ) : (

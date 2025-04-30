@@ -1,6 +1,7 @@
 // src/pages/StoryCreator.tsx
 // Correction: Added Authorization header to generateStory mutation fetch call.
 // *** CHANGE: Removed fixed grid classes from TabsList for responsiveness ***
+// *** CHANGE: Added flex-wrap and gap to TabsList for wrapping on mobile ***
 
 import React, {
   useEffect,
@@ -439,8 +440,8 @@ const StoryCreator: React.FC = () => {
               onValueChange={(v) => setActiveTab(v as ActiveTab)}
               className="space-y-6"
             >
-              {/* *** MODIFICATION HERE: Removed grid classes from TabsList *** */}
-              <TabsList className="h-auto justify-start overflow-x-auto whitespace-nowrap sm:justify-center">
+              {/* *** MODIFICATION HERE: Removed overflow/nowrap, added flex-wrap and gap *** */}
+              <TabsList className="flex flex-wrap h-auto justify-start gap-x-2 gap-y-1 sm:justify-center">
                  <TabsTrigger value="parameters"><PenTool className="mr-1 h-4 w-4 flex-shrink-0" /> Story Outline</TabsTrigger>
                  <TabsTrigger value="edit" disabled={!storyContent}><Edit className="mr-1 h-4 w-4 flex-shrink-0" /> Edit / Preview</TabsTrigger>
                  <TabsTrigger value="voice" disabled={!storyContent}><Headphones className="mr-1 h-4 w-4 flex-shrink-0" /> Voice & Audio</TabsTrigger>
